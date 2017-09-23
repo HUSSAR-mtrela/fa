@@ -27,6 +27,10 @@ URA0001 = Class(CAirUnit) {
         CreateCybranBuildBeams(self, unitBeingBuilt, {'Muzzle_03',}, self.BuildEffectsBag)
     end,
 
+    OnStartCapture = function(self, target)
+        IssueStop({self}) -- You can't capture!
+    end,
+
     OnStartReclaim = function(self, target)
         IssueStop({self}) -- You can't reclaim!
     end,
@@ -99,7 +103,7 @@ URA0001 = Class(CAirUnit) {
         Main = function(self)
             local focus = self.spawnedBy:GetFocusUnit()
 
-            if not focus then
+            if not focus or focus:BeenDestroyed() or focus.Dead then
                 ChangeState(self, self.IdleState)
             end
 

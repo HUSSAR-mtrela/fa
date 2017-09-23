@@ -52,9 +52,7 @@ function ExecutePlan(aiBrain)
     if not aiBrain.BuilderManagers.MAIN.FactoryManager:HasBuilderList() then
         aiBrain:SetResourceSharing(true)
 
-        local per = ScenarioInfo.ArmySetup[aiBrain.Name].AIPersonality
-
-        if string.find(per, 'sorian') then
+        if aiBrain.Sorian then
             aiBrain:SetupUnderEnergyStatTriggerSorian(0.1)
             aiBrain:SetupUnderMassStatTriggerSorian(0.1)
         else
@@ -76,7 +74,7 @@ function ExecutePlan(aiBrain)
             end
         end
 
-        if string.find(per, 'sorian') then
+        if aiBrain.Sorian then
             ForkThread(UnitCapWatchThreadSorian, aiBrain)
             ForkThread(behaviors.NukeCheck, aiBrain)
         else

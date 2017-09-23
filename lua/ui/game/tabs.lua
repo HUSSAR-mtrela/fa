@@ -15,7 +15,6 @@ local animationLock = false
 local gameOver = false
 local activeTab = false
 local pauseBtn = false
---local infoBtn = false
 
 timeoutsRemaining = false
 
@@ -80,6 +79,16 @@ local menus = {
                 tooltip = 'esc_options',
             },
             {
+                action = 'KeyBindings',
+                label = '<LOC key_binding_0000>Key Bindings',
+                tooltip = 'esc_keyBindings',
+            },
+            {
+                action = 'Customiser',
+                label = '<LOC notify_0000>Notify Management',
+                tooltip = 'esc_customiser',
+            },
+            {
                 action = 'ShowObj',
                 label='<LOC _Show_Scenario_Info>Scenario',
                 tooltip = 'show_scenario',
@@ -118,6 +127,16 @@ local menus = {
                 tooltip = 'esc_options',
             },
             {
+                action = 'KeyBindings',
+                label = '<LOC key_binding_0000>Key Bindings',
+                tooltip = 'esc_keyBindings',
+            },
+            {
+                action = 'Customiser',
+                label = '<LOC notify_0000>Notify Customiser',
+                tooltip = 'esc_customiser',
+            },
+            {
                 action = 'ShowObj',
                 label='<LOC _Show_Scenario_Info>Scenario',
                 tooltip = 'show_scenario',
@@ -146,11 +165,6 @@ local menus = {
         },
         lan = {
             {
-                action = 'RehostGame',
-                label = '<LOC _Rehost_Game>Rehost Game',
-                tooltip = 'esc_rehost',
-            },
-            {
                 action = 'ShowObj',
                 label='<LOC _Show_Scenario_Info>Scenario',
                 tooltip = 'show_scenario',
@@ -159,6 +173,16 @@ local menus = {
                 action = 'Options',
                 label = '<LOC _Options>',
                 tooltip = 'esc_options',
+            },
+            {
+                action = 'KeyBindings',
+                label = '<LOC key_binding_0000>Key Bindings',
+                tooltip = 'esc_keyBindings',
+            },
+            {
+                action = 'Customiser',
+                label = '<LOC notify_0000>Notify Customiser',
+                tooltip = 'esc_customiser',
             },
             {
                 action = 'EndMPGame',
@@ -194,10 +218,20 @@ local menus = {
                 label = 'Show Game Info',
                 tooltip = 'Show the settings of this game',
             },
-                  {
+            {
+                action = 'Customiser',
+                label = '<LOC notify_0000>Notify Customiser',
+                tooltip = 'esc_customiser',
+            },
+            {
                 action = 'Options',
                 label = '<LOC _Options>',
                 tooltip = 'esc_options',
+            },
+            {
+                action = 'KeyBindings',
+                label = '<LOC key_binding_0000>Key Bindings',
+                tooltip = 'esc_keyBindings',
             },
             {
                 action = 'ExitMPGame',
@@ -276,7 +310,7 @@ local actions = {
     ExitSPGame = function()
         UIUtil.QuickDialog(GetFrame(0), "<LOC EXITDLG_0003>Are you sure you'd like to exit?",
             "<LOC _Yes>", function()
-                ExitApplication()
+                EscapeHandler.SafeQuit()
             end,
             "<LOC _Save>", ExitGameSaveWindow,
             "<LOC _No>", nil,
@@ -304,6 +338,12 @@ local actions = {
     end,
     Options = function()
         import('/lua/ui/dialogs/options.lua').CreateDialog(GetFrame(0))
+    end,
+    KeyBindings = function()
+        import("/lua/ui/dialogs/keybindings.lua").CreateUI()
+    end,
+    Customiser = function()
+        import('/lua/ui/notify/customiser.lua').CreateUI()
     end,
 }
 
@@ -506,7 +546,7 @@ function CommonLogic()
         else
             tab.OnCheck = function(self, checked)
                 for _, altTab in controls.tabs do
-                    if altTab != self and not altTab.Data.pause then
+                    if altTab ~= self and not altTab.Data.pause then
                         altTab:SetCheck(false, true)
                     end
                 end
@@ -804,9 +844,8 @@ function TogglePause()
 end
 
 function ToggleGameInfo()
-    --LOG("XINNOinfo")
     local ItemList = import('/lua/maui/itemlist.lua').ItemList
-    --
+
     local dialog = Group(GetFrame(0))
         LayoutHelpers.AtCenterIn(dialog, GetFrame(0))
         dialog.Depth:Set(999) -- :GetTopmostDepth() + 1
@@ -815,8 +854,8 @@ function ToggleGameInfo()
         dialog.Height:Set(background.Height)
         LayoutHelpers.FillParent(background, dialog)
     local dialog2 = Group(dialog)
-        dialog2.Width:Set(background.Width)--536)537--268
-        dialog2.Height:Set(background.Height)--400)401
+        dialog2.Width:Set(background.Width)
+        dialog2.Height:Set(background.Height)
         LayoutHelpers.AtCenterIn(dialog2, dialog)
     -----------
     -- Title --
@@ -1030,7 +1069,7 @@ function ToggleScore()
 end
 
 function ToggleTabDisplay(state)
-    if import('/lua/ui/game/gamemain.lua').gameUIHidden and state != nil then
+    if import('/lua/ui/game/gamemain.lua').gameUIHidden and state ~= nil then
         return
     end
     if UIUtil.GetAnimationPrefs() then

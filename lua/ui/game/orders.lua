@@ -19,6 +19,7 @@ local Prefs = import('/lua/user/prefs.lua')
 local CM = import('/lua/ui/game/commandmode.lua')
 local UIMain = import('/lua/ui/uimain.lua')
 local Select = import('/lua/ui/game/selection.lua')
+local EnhancementQueue = import('/lua/ui/notify/enhancementqueue.lua')
 
 controls = import('/lua/ui/controls.lua').Get()
 
@@ -34,6 +35,7 @@ local vertRows = 3
 local horzRows = 4
 local vertCols = numSlots/vertRows
 local horzCols = numSlots/horzRows
+local lastOCTime = {}
 
 local function CreateOrderGlow(parent)
     controls.orderGlow = Bitmap(parent, UIUtil.UIFile('/game/orders/glow-02_bmp.dds'))
@@ -205,6 +207,12 @@ function ClearCommands(units)
     local cb = {Func = 'ClearCommands'}
 
     if units then
+        EnhancementQueue.clearEnhancements(units)
+        ForkThread(function() -- Wait a tick for the callback to do its job then refresh the UI to remove ghost enhancement orders
+            WaitSeconds(0.1)
+            import('/lua/ui/game/construction.lua').RefreshUI()
+        end)
+
         local ids = {}
         for _, u in units do
             table.insert(ids, u:GetEntityId())
@@ -817,7 +825,13 @@ local function OverchargeFrame(self, deltaTime)
             local armyTable = GetArmiesTable()
             local facStr = import('/lua/factions.lua').Factions[armyTable.armiesTable[armyTable.focusArmy].faction + 1].SoundPrefix
             local sound = Sound({Bank = 'XGG', Cue = 'Computer_Computer_Basic_Orders_01173'})
-            PlayVoice(sound)
+            if not lastOCTime[unit:GetArmy()] then
+                lastOCTime[unit:GetArmy()] = GetGameTimeSeconds() - 2
+            end
+            if GetGameTimeSeconds() - lastOCTime[unit:GetArmy()] > 1 then
+                PlayVoice(sound)
+                lastOCTime[unit:GetArmy()] = GetGameTimeSeconds()
+            end
         end
     else
         if not self:IsDisabled() then
@@ -966,7 +980,11 @@ local function AddOrder(orderInfo, slot, batchMode)
         checkbox.buttonText:SetText(orderInfo.ButtonTextFunc(checkbox))
         checkbox.buttonText:SetColor('ffffffff')
         checkbox.buttonText:SetDropShadow(true)
-        LayoutHelpers.AtBottomIn(checkbox.buttonText, checkbox)
+        if Prefs.GetFromCurrentProfile('options').show_hotkeylabels and orderKeys[orderInfo.helpText] then
+            LayoutHelpers.AtTopIn(checkbox.buttonText, checkbox)
+        else
+            LayoutHelpers.AtBottomIn(checkbox.buttonText, checkbox)
+        end
         LayoutHelpers.AtHorizontalCenterIn(checkbox.buttonText, checkbox)
         checkbox.buttonText:DisableHitTest()
         checkbox.buttonText:SetNeedsFrameUpdate(true)
@@ -1042,7 +1060,14 @@ local function CreateCommonOrders(availableOrders, init)
         end
     end
 
-    local units = currentSelection
+    local units = {}
+    if currentSelection and table.getn(currentSelection) > 0 then
+        for unit in currentSelection do
+            if not IsDestroyed(unit) then
+                table.insert(units, unit)
+            end
+        end
+    end
     if units and table.getn(units) > 0 and EntityCategoryFilterDown(categories.MOBILE - categories.STRUCTURE, units) then
         for _, availOrder in availableOrders do
             if (availOrder == 'RULEUCC_RetaliateToggle' and table.getn(EntityCategoryFilterDown(categories.MOBILE, units)) > 0)

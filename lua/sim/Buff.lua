@@ -171,7 +171,6 @@ end
 --We reaffect the unit to make sure that buff type is recalculated accurately without the buff that was on the unit.
 --However, this doesn't work for stunned units because it's a fire-and-forget type buff, not a fire-and-keep-track-of type buff.
 function BuffAffectUnit(unit, buffName, instigator, afterRemove)
-
     local buffDef = Buffs[buffName]
 
     local buffAffects = buffDef.Affects
@@ -181,7 +180,6 @@ function BuffAffectUnit(unit, buffName, instigator, afterRemove)
     end
 
     for atype, vals in buffAffects do
-
         if atype == 'Health' then
             --Note: With health we don't actually look at the unit's table because it's an instant happening.  We don't want to overcalculate something as pliable as health.
 
@@ -202,18 +200,20 @@ function BuffAffectUnit(unit, buffName, instigator, afterRemove)
                 unit:AdjustHealth(instigator, healthadj)
             end
         elseif atype == 'MaxHealth' then
+            -- With this type of buff, the idea is to adjust the Max Health of a unit.
+            -- The DoNotFill flag is set when we want to adjust the max ONLY and not have the
+            --     rest of the unit's HP affected to match. If it's not flagged, the unit's HP
+            --     will be adjusted by the same amount and direction as the max
             local unitbphealth = unit:GetBlueprint().Defense.MaxHealth or 1
             local val = BuffCalculate(unit, buffName, 'MaxHealth', unitbphealth)
+
             local oldmax = unit:GetMaxHealth()
+            local difference = oldmax - unit:GetHealth()
 
             unit:SetMaxHealth(val)
 
-            if not vals.DoNoFill and not unit.IsBeingTransferred then
-                if val > oldmax then
-                    unit:AdjustHealth(unit, val - oldmax)
-                else
-                    unit:SetHealth(unit, math.min(unit:GetHealth(), unit:GetMaxHealth()))
-                end
+            if not vals.DoNotFill and not unit.IsBeingTransferred then
+                unit:SetHealth(unit, unit:GetMaxHealth() - difference)
             end
         elseif atype == 'Regen' then
             -- Adjusted to use a special case of adding mults and calculating the final value

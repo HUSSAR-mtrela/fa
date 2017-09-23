@@ -478,12 +478,29 @@ function PreModBlueprints(all_bps)
             }
         end
 
+        -- Create new keys so that unit scripting can more easily reference the most common data needed
+        for _, category in {'EXPERIMENTAL', 'SUBCOMMANDER', 'COMMAND', 'TECH1', 'TECH2', 'TECH3'} do
+            if bp.CategoriesHash[category] then
+                bp.TechCategory = category
+                break
+            end
+        end
+
+        for _, category in {'LAND', 'AIR', 'NAVAL'} do
+            if bp.CategoriesHash[category] then
+                bp.LayerCategory = category
+                break
+            end
+        end
+
+        bp.FactionCategory = string.upper(bp.General.FactionName or 'Unknown')
+
         -- Mod in AI.GuardScanRadius = Longest weapon range * longest tracking radius
         -- Takes ACU/SCU enhancements into account
         -- fixes move-attack range issues
         -- Most Air units have the GSR defined already, this is just making certain they don't get included
         local modGSR = not (bp.AI and bp.AI.GuardScanRadius) and (
-                       (bp.CategoriesHash.MOBILE and (bp.CategoriesHash.LAND or bp.CategoriesHash.NAVAL) and (bp.CategoriesHash.DIRECTFIRE or bp.CategoriesHash.INDIRECTFIRE or bp.CategoriesHash.ENGINEER)) or
+                       (bp.CategoriesHash.MOBILE and (bp.CategoriesHash.LAND or bp.CategoriesHash.NAVAL) and (bp.CategoriesHash.DIRECTFIRE or bp.CategoriesHash.INDIRECTFIRE or bp.CategoriesHash.ANTINAVY or bp.CategoriesHash.ENGINEER)) or
                        (bp.CategoriesHash.STRUCTURE and (bp.CategoriesHash.DIRECTFIRE or bp.CategoriesHash.INDIRECTFIRE) and (bp.CategoriesHash.DEFENSE or bp.CategoriesHash.ARTILLERY)) or bp.CategoriesHash.DUMMYGSRWEAPON
                        )
 

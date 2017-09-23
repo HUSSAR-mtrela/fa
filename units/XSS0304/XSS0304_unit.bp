@@ -1,6 +1,9 @@
 UnitBlueprint {
     AI = {
         GuardReturnRadius = 130,
+        TargetBones = {
+            'Front_Turret_Barrel01',
+        },
     },
     Audio = {
         AmbientMove = Sound {
@@ -337,7 +340,7 @@ UnitBlueprint {
             RateOfFire = 0.25,
             SlavedToBody = true,
             SlavedToBodyArcRange = 10,
-            TargetCheckInterval = 2,
+            TargetCheckInterval = 0.5,
             TargetPriorities = {
                 'SPECIALHIGHPRI',
                 'MOBILE',

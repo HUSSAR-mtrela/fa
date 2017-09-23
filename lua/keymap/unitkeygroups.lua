@@ -173,6 +173,7 @@ unitkeygroups = {
     },
     ["Upgrades"] = {
         "_upgrade",
+        "T3_Mobile_AA",
         "T3_Heavy_Air_Transport",
         "T3_Torpedo_Bomber",
     },
@@ -182,6 +183,7 @@ unitkeygroups = {
         "uaa0310", -- Czar
         "uas0401", -- Tempest
         "xab1401", -- Paragon
+        "xab2307", -- Salvation
         -- Cyb
         "url0402", -- Monkeylord
         "xrl0403", -- Megalith
@@ -215,6 +217,52 @@ unitkeygroups = {
         "urb0103",
         "ueb0103",
         "uab0103",
+    },
+    ["T2_Support_Factory"] = {
+        "T2_Support_Land_Factory",
+        "T2_Support_Air_Factory",
+        "T2_Support_Naval_Factory",
+    },
+    ["T3_Support_Factory"] = {
+        "T3_Support_Land_Factory",
+        "T3_Support_Air_Factory",
+        "T3_Support_Naval_Factory",
+    },
+    ["T2_Support_Land_Factory"] = {
+        "zsb9501",
+        "zrb9501",
+        "zeb9501",
+        "zab9501",
+    },
+    ["T2_Support_Air_Factory"] = {
+        "zsb9502",
+        "zrb9502",
+        "zeb9502",
+        "zab9502",
+    },
+    ["T2_Support_Naval_Factory"] = {
+        "zsb9503",
+        "zrb9503",
+        "zeb9503",
+        "zab9503",
+    },
+    ["T3_Support_Land_Factory"] = {
+        "zsb9601",
+        "zrb9601",
+        "zeb9601",
+        "zab9601",
+    },
+    ["T3_Support_Air_Factory"] = {
+        "zsb9602",
+        "zrb9602",
+        "zeb9602",
+        "zab9602",
+    },
+    ["T3_Support_Naval_Factory"] = {
+        "zsb9603",
+        "zrb9603",
+        "zeb9603",
+        "zab9603",
     },
     ["Quantum_Gateway"] = {
         "xsb0304",
@@ -411,9 +459,6 @@ unitkeygroups = {
         "ues0305",
         "uas0305",
     },
-    ["Rapid_Fire_Artillery_Installation"] = {
-        "xab2307",
-    },
     ["Quantum_Optics_Facility"] = {
         "xab3301",
     },
@@ -555,6 +600,12 @@ unitkeygroups = {
         "ual0205",
         "uel0205",
         "url0205",
+    },
+    ["T3_Mobile_AA"] = {
+        "dalk003",
+        "delk002",
+        "drlk001",
+        "dslk004",
     },
     ["T2_Engineer"] = {
         "ual0208",

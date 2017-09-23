@@ -78,11 +78,11 @@ Expressions = {
     -- added exclusion of engineers and structures because they are restricted by other presets
     LAND        = "(LAND - ENGINEER - STRUCTURE)",
     -- added restriction of AA structures because they are not needed when all air units are restricted
-    AIR         = "((STRUCTURE * (ANTIAIR + AIRSTAGINGPLATFORM)) + (AIR - POD - SATELLITE) + (LAND * ANTIAIR - DIRECTFIRE) + (TECH3 * NAVAL * CARRIER * AIRSTAGINGPLATFORM))",
+    AIR         = "((STRUCTURE * (ANTIAIR + AIRSTAGINGPLATFORM)) + (AIR - POD) + (LAND * ANTIAIR - EXPERIMENTAL) + (NAVAL * ANTIAIR - DIRECTFIRE - INDIRECTFIRE - ANTINAVY))",
     -- added restriction of anti-navy structures because they are not needed when all navy units are restricted
     NAVAL       = "((STRUCTURE * ANTINAVY) + NAVAL - (MOBILESONAR * TECH3))",
     HOVER       = "(HOVER - INSIGNIFICANTUNIT - ENGINEER)",
-    AMPHIBIOUS  = "(AMPHIBIOUS + xsl0401 + xsl0303 + xel0305 + xrl0305 + url0203 + urs0201 + url0402 + url0402 + xrl0403 + ual0303 + ual0401)", -- Monkey Lord, CYBRIAN T2 Destroyer
+    AMPHIBIOUS  = "(AMPHIBIOUS + xsl0401 + xsl0303 + xel0305 + xrl0305 + url0203 + urs0201 + url0402 + url0402 + xrl0403 + uel0401 + ual0401 + url0401)", -- Monkey Lord, CYBRIAN T2 Destroyer
     SUBS        = "((NAVAL * SUBMERSIBLE) - STRUCTURE)",
     BOTS        = "(LAND * BOT)",
     BASE        = "(STRUCTURE - FACTORY - MASSEXTRACTION - MASSSTORAGE - MASSFABRICATION - ENERGYPRODUCTION - ENERGYSTORAGE + MOBILESONAR)",
@@ -117,7 +117,7 @@ Expressions = {
     T2_BASE_SPAM  = "(TECH2 * STRUCTURE - FACTORY - MASSEXTRACTION - MASSSTORAGE - MASSFABRICATION - ENERGYPRODUCTION - ENERGYSTORAGE)",
     T3_BASE_SPAM  = "(TECH3 * STRUCTURE - FACTORY - MASSEXTRACTION - MASSSTORAGE - MASSFABRICATION - ENERGYPRODUCTION - ENERGYSTORAGE + MOBILESONAR)",
 
-    SNIPES_AIR    = "(AIR * (TECH2 + TECH3) * (GROUNDATTACK + BOMBER))",
+    SNIPES_AIR    = "(AIR * (TECH2 + TECH3) * (GROUNDATTACK + BOMBER + ANTINAVY))",
     SNIPES_LAND   = "(LAND * MOBILE * BOMB + xrl0302)", -- Beetle Bomb
     SNIPES_BOTS   = "(LAND * SNIPER * BOT + xsl0305 + xal0305)", -- Sniper Bots
     SNIPES_BASE   = "(STRUCTURE * MINE)", -- for mods that add LAND MINES
@@ -696,7 +696,7 @@ local function CreatePresets()
         "<LOC restricted_units_data_STEALTH_BASE>No Stealth Structures",
         "/textures/ui/common/icons/presets/stealth-base.dds")
     CreatePreset("STEALTH_LAND",
-        "<LOC restricted_units_info_STEALTH_LAND>Prevents all mobile land units that provide stealth field for nearby units or structures",
+        "<LOC restricted_units_info_STEALTH_LAND>Prevents all mobile land units that provide personal stealth or stealth field for nearby units or structures",
         "<LOC restricted_units_data_STEALTH_LAND>No Mobile Stealth",
         "/textures/ui/common/icons/presets/stealth-land.dds")
     CreatePreset("STEALTH_NAVY",

@@ -1,6 +1,8 @@
 local SUtils = import('/lua/ai/sorianutilities.lua')
 
-local PingLocked = false
+local PingLimit = 1 -- Maximum number of pings per army, within PingTimeout seconds
+local PingTimeout = 1 -- How many seconds a ping counts toward an army's limit
+local PingsRemaining = {}
 local PingMarkers = {}
 MaxPingMarkers = 15
 --On first ping, send data to the user layer telling it the maximum allowable markers per army
@@ -18,13 +20,17 @@ function AnimatePingMesh(entity)
 end
 
 function SpawnPing(data)
-    if not PingLocked then
+    if not PingsRemaining[data.Owner] then
+        PingsRemaining[data.Owner] = PingLimit
+    end
+    
+    if PingsRemaining[data.Owner] > 0 then
         if data.Marker and PingMarkers[data.Owner] and table.getsize(PingMarkers[data.Owner]) >= MaxPingMarkers then
             return
         elseif data.Marker and not PingMarkers[data.Owner] then
             PingMarkers[data.Owner] = {}
         end
-        PingLocked = true
+        PingsRemaining[data.Owner] = PingsRemaining[data.Owner] - 1
 
         if data.Marker and GetPingID(data.Owner) then
             data.ID = GetPingID(data.Owner)
@@ -60,7 +66,7 @@ function SpawnPing(data)
             end
         end
 
-        ForkThread(function() WaitSeconds(1) PingLocked = false end)
+        ForkThread(function(owner) WaitSeconds(PingTimeout) PingsRemaining[owner] = PingsRemaining[owner] + 1 end, data.Owner)
     end
 end
 

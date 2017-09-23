@@ -1688,6 +1688,7 @@ AirUnit = Class(MobileUnit) {
             EffectUtil.CreateEffects(self, self:GetArmy(), EffectTemplate.DefaultProjectileWaterImpact)
             self.shallSink = true
             self.colliderProj:Destroy()
+            self.colliderProj = nil
         end
 
         self:DisableUnitIntel('Killed')
@@ -1888,8 +1889,10 @@ AirTransport = Class(AirUnit, BaseTransport) {
         if self:BeenDestroyed() then return end
 
         for _, unit in self.cargo or {} do
-            unit.DeathWeaponEnabled = false -- Units at this point have no weapons for some reason. Trying to fire one crashes the game.
-            unit:OnKilled(self, 'Normal', 0)
+            if not unit:BeenDestroyed() then
+                unit.DeathWeaponEnabled = false -- Units at this point have no weapons for some reason. Trying to fire one crashes the game.
+                unit:OnKilled(self, 'Normal', 0)
+            end
         end
     end,
 }
@@ -2186,7 +2189,6 @@ CommandUnit = Class(WalkingLandUnit) {
         self:HideBone(0, true)
         self:SetUnSelectable(true)
         self:SetBusy(true)
-        self:SetBlockCommandQueue(true)
         self:ForkThread(self.WarpInEffectThread, bones)
     end,
 
@@ -2238,6 +2240,27 @@ ACUUnit = Class(CommandUnit) {
             oldApplyDamage(unpack(arg))
             aiBrain:OnPlayCommanderUnderAttackVO()
         end
+    end,
+
+    CreateEnhancement = function(self, enh)
+        CommandUnit.CreateEnhancement(self, enh)
+
+        self:SendNotifyMessage('completed', enh)
+    end,
+
+    OnWorkBegin = function(self, work)
+        local legalWork = CommandUnit.OnWorkBegin(self, work)
+        if not legalWork then return end
+
+        self:SendNotifyMessage('started', work)
+
+        return true
+    end,
+
+    OnWorkFail = function(self, work)
+        self:SendNotifyMessage('cancelled', work)
+
+        CommandUnit.OnWorkFail(self, work)
     end,
 
     OnStopBeingBuilt = function(self, builder, layer)

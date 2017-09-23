@@ -9,6 +9,7 @@ local AIUtils = import('/lua/ai/aiutilities.lua')
 local AIAttackUtils = import('/lua/ai/aiattackutilities.lua')
 local AMPlatoonHelperFunctions = import('/lua/editor/AMPlatoonHelperFunctions.lua')
 local ScenarioUtils = import('/lua/sim/ScenarioUtilities.lua')
+local SUtils = import('/lua/AI/sorianutilities.lua')
 local TriggerFile = import('/lua/scenariotriggers.lua')
 local ScenarioPlatoonAI = import('/lua/ScenarioPlatoonAI.lua')
 local Buff = import('/lua/sim/Buff.lua')
@@ -486,7 +487,7 @@ function PermanentFactoryAssist(platoon)
             end
         end
         -- If the disparity between factories is more than 1, reorganize engineers
-        if not assisting or (high and low and lowFac and high > low + 1 and highFac == unit:GetGuardedUnit()) then
+        if (not assisting and lowFac) or (high and low and lowFac and high > low + 1 and highFac == unit:GetGuardedUnit()) then
             assisting = true
             platoon:Stop()
             IssueGuard({unit}, lowFac)
@@ -772,10 +773,11 @@ function BaseManagerEngineerThread(platoon)
 
     local structurePriorities = platoon.PlatoonData.StructurePriorities
     if not structurePriorities then
-        structurePriorities = {'T3Resource', 'T2Resource', 'T1Resource', 'T3EnergyProduction', 'T2EnergyProduction', 'T1EnergyProduction',
-            'T3MassCreation', 'T1LandFactory', 'T1AirFactory', 'T4LandExperimental1', 'T4LandExperimental2', 'T4AirExperimental1',
+        structurePriorities = {'T3Resource', 'T2Resource', 'T1Resource', 'T3EnergyProduction', 'T2EnergyProduction', 'T1EnergyProduction', 'T3MassCreation',
+            'T2EngineerSupport', 'T3SupportLandFactory', 'T3SupportAirFactory', 'T3SupportSeaFactory', 'T2SupportLandFactory', 'T2SupportAirFactory', 'T2SupportSeaFactory',
+            'T1LandFactory', 'T1AirFactory', 'T1SeaFactory', 'T4LandExperimental1', 'T4LandExperimental2', 'T4AirExperimental1',
             'T4SeaExperimental1', 'T3ShieldDefense', 'T2ShieldDefense', 'T3StrategicMissileDefense', 'T3Radar', 'T2Radar', 'T1Radar',
-            'T3AADefense', 'T3GroundDefense', 'T2AADefense', 'T2MissileDefense', 'T2GroundDefense', 'T2NavalDefense', 'ALLUNITS'}
+            'T3AADefense', 'T3GroundDefense', 'T3NavalDefense', 'T2AADefense', 'T2MissileDefense', 'T2GroundDefense', 'T2NavalDefense', 'ALLUNITS'}
     end
 
     local retBool, unitName
@@ -1084,6 +1086,75 @@ function BaseManagerScoutingAI(platoon)
     end
 end
 
+function BaseManagerTMLAI(platoon)
+    local aiBrain = platoon:GetBrain()
+    local pData = platoon.PlatoonData
+    local baseName = pData.BaseName
+    local bManager = aiBrain.BaseManagers[baseName]
+    local unit = platoon:GetPlatoonUnits()[1]
+    unit.BaseName = baseName
+
+    if not unit then return end
+
+    platoon:Stop()
+    local bp = unit:GetBlueprint()
+    local weapon = bp.Weapon[1]
+    local maxRadius = weapon.MaxRadius
+    local minRadius = weapon.MinRadius
+
+    local simpleTargetting = true
+    if ScenarioInfo.Options.Difficulty == 3 then
+        simpleTargetting = false
+    end
+
+    unit:SetAutoMode(true)
+
+    platoon:SetPrioritizedTargetList('Attack', {
+        categories.COMMAND,
+        categories.EXPERIMENTAL,
+        categories.ENERGYPRODUCTION,
+        categories.STRUCTURE,
+        categories.TECH3 * categories.MOBILE})
+
+    while aiBrain:PlatoonExists(platoon) do
+        if BMBC.TMLsEnabled(aiBrain, baseName) then
+            local target = false
+            local blip = false
+            while unit:GetTacticalSiloAmmoCount() < 1 or not target do
+                WaitSeconds(7)
+                target = false
+                while not target do
+                    target = platoon:FindPrioritizedUnit('Attack', 'Enemy', true, unit:GetPosition(), maxRadius)
+
+                    if target then
+                        break
+                    end
+
+                    WaitSeconds(3)
+
+                    if not aiBrain:PlatoonExists(platoon) then
+                        return
+                    end
+                end
+            end
+            if not target.Dead then
+                if EntityCategoryContains(categories.STRUCTURE, target) or simpleTargetting then
+                    IssueTactical({unit}, target)
+                else
+                    targPos = SUtils.LeadTarget(platoon, target)
+                    if targPos then
+                        IssueTactical({unit}, targPos)
+                    end
+                end
+            end
+        end
+        WaitSeconds(3)
+    end
+end
+
+function BaseManagerNukeAI(platoon)
+end
+
 function AMUnlockBuildTimer(platoon)
     ForkThread(AMPlatoonHelperFunctions.UnlockTimer, platoon.PlatoonData.LockTimer, platoon.PlatoonData.PlatoonName)
 end
@@ -1180,25 +1251,14 @@ function UnitUpgradeThread(unit)
         unitType = 'DefaultSACU'
     end
 
-    local pool = aiBrain:GetPlatoonUniquelyNamed('ArmyPool')
     while not unit:IsDead() do
         if not bManager then
             bManager = aiBrain.BaseManagers[unit.PlatoonData.BaseName]
         end
         if bManager then
-            -- See if unit is in the pool
-            local found = false
-            for k, v in pool:GetPlatoonUnits() do
-                if v == unit then
-                    found = true
-                    break
-                end
-            end
-
-            -- If its in the pool and needs an upgrade
             local upgradeName = bManager:UnitNeedsUpgrade(unit, unitType)
 
-            if found and upgradeName then
+            if upgradeName and not unit:IsUnitState('Building') then
                 local platoon = aiBrain:MakePlatoon('', '')
                 aiBrain:AssignUnitsToPlatoon(platoon, {unit}, 'support', 'none')
 
@@ -1206,6 +1266,8 @@ function UnitUpgradeThread(unit)
                     TaskName = "EnhanceTask",
                     Enhancement = upgradeName
                 }
+                IssueStop({unit})
+                IssueClearCommands({unit})
                 IssueScript({unit}, order)
 
                 repeat

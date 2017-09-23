@@ -589,7 +589,7 @@ UnitBlueprint {
             RegenAssistMult = 10,
             ShieldEnergyDrainRechargeTime = 5,
             ShieldMaxHealth = 8000,
-            ShieldRechargeTime = 65,
+            ShieldRechargeTime = 90,
             ShieldRegenRate = 30,
             ShieldRegenStartTime = 1,
             ShowBones = {
@@ -858,6 +858,13 @@ UnitBlueprint {
         Level3 = 65,
         Level4 = 90,
         Level5 = 120,
+    },
+    VeteranHealingMult = { -- This table is used to override the vet instant heal multiplier per level
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
     },
     Weapon = {
         {

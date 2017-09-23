@@ -807,6 +807,10 @@ Tooltips = {
         title = "<LOC OPTIONS_0211>Use Factional UI Skin",
         description = "<LOC OPTIONS_0220>When on, the UI skin will change to match the faction you are playing",
     },
+    options_faction_font_color = {
+        title = "<LOC OPTIONS_0279>Use Factional UI Font Color",
+        description = "<LOC OPTIONS_0280>When on, the UI font color will change to match the faction you are playing",
+    },
     options_hotbuild_cycle_preview = {
         title = "<LOC OPTIONS_0247>Enable Cycle Preview for Hotbuild",
         description = "<LOC OPTIONS_0248>When on, you can cycle the Hotbuild preview",
@@ -827,6 +831,10 @@ Tooltips = {
         title = "<LOC OPTIONS_0277>Minimum Reclaim Label Amount",
         description = "<LOC OPTIONS_0278>When showing the reclaim label overlay, items with mass values less than this won't be shown",
     },
+    options_show_hotkeylabels = {
+        title = "<LOC OPTIONS_0281>Hotkey Labels",
+        description = "<LOC OPTIONS_0282>Displays associated keybindings on the buttons for commands and building units or structures"
+   },
     -- **********************
     -- ** Lobby Strings
     -- **********************
@@ -977,6 +985,10 @@ Tooltips = {
     lob_rerun_benchmark = {
         title='<LOC lobui_0752>Rerun CPU Benchmark',
         description='<LOC lobui_0753>Recalculates your CPU rating.'
+    },
+    lob_close_empty_slots = {
+        title='<LOC lobui_0774>Close/Open Empty Slots',
+        description='<LOC lobui_0775>Closes all empty open slots. If all empty slots are already closed, then it opens them. Right-click for close - spawn mex. Hold Ctrl to reset.'
     },
     map_type = {
         title = "<LOC lobui_0583>Map Type",

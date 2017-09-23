@@ -33,6 +33,14 @@ local straticonsfile = import('/lua/ui/game/straticons.lua')
 local Select = import('/lua/ui/game/selection.lua')
 local Factions = import('/lua/factions.lua').Factions
 local FactionInUnitBpToKey = import('/lua/factions.lua').FactionInUnitBpToKey
+local SetIgnoreSelection = import('/lua/ui/game/gamemain.lua').SetIgnoreSelection
+local EnhancementQueueFile = import('/lua/ui/notify/enhancementqueue.lua')
+local getEnhancementQueue = EnhancementQueueFile.getEnhancementQueue
+
+local modifiedCommandQueue = {}
+local previousModifiedCommandQueue = {}
+local lastDisplayType
+local watchingUnit
 
 local prevBuildables = false
 local prevSelection = false
@@ -285,8 +293,8 @@ function CreateUI()
     controls.rightBracketMid = Bitmap(controls.constructionGroup)
     controls.extraBtn1 = Checkbox(controls.minBG)
     controls.extraBtn1.icon = Bitmap(controls.extraBtn1)
-    controls.extraBtn1.icon.OnTexture = UIUtil.UIFile('/game/construct-sm_btn/pause_on.dds')
-    controls.extraBtn1.icon.OffTexture = UIUtil.UIFile('/game/construct-sm_btn/pause_off.dds')
+    controls.extraBtn1.icon.OnTexture = UIUtil.SkinnableFile('/game/construct-sm_btn/pause_on.dds')
+    controls.extraBtn1.icon.OffTexture = UIUtil.SkinnableFile('/game/construct-sm_btn/pause_off.dds')
     LayoutHelpers.AtCenterIn(controls.extraBtn1.icon, controls.extraBtn1)
     controls.extraBtn1.icon:DisableHitTest()
 
@@ -308,8 +316,8 @@ function CreateUI()
     controls.extraBtn1:UseAlphaHitTest(true)
     controls.extraBtn2 = Checkbox(controls.minBG)
     controls.extraBtn2.icon = Bitmap(controls.extraBtn2)
-    controls.extraBtn2.icon.OnTexture = UIUtil.UIFile('/game/construct-sm_btn/pause_on.dds')
-    controls.extraBtn2.icon.OffTexture = UIUtil.UIFile('/game/construct-sm_btn/pause_off.dds')
+    controls.extraBtn2.icon.OnTexture = UIUtil.SkinnableFile('/game/construct-sm_btn/pause_on.dds')
+    controls.extraBtn2.icon.OffTexture = UIUtil.SkinnableFile('/game/construct-sm_btn/pause_off.dds')
     LayoutHelpers.AtCenterIn(controls.extraBtn2.icon, controls.extraBtn2)
     controls.extraBtn2.icon:DisableHitTest()
 
@@ -619,6 +627,30 @@ function CommonLogic()
             else
                 control.Count:SetText('')
             end
+            control.Icon:Show()
+            control:Enable()
+        elseif type == 'enhancementqueue' then
+            local data = control.Data
+            local _, down, over, _, up = GetEnhancementTextures(data.unitID, data.icon)
+
+            control:SetSolidColor('00000000')
+            control.Icon:SetSolidColor('00000000')
+            control.tooltipID = data.name
+            control:SetNewTextures(GetEnhancementTextures(data.unitID, data.icon))
+            control.Height:Set(48)
+            control.Width:Set(48)
+            control.Icon.Width:Set(48)
+            control.Icon.Height:Set(48)
+            control.StratIcon:SetSolidColor('00000000')
+            control.Count:SetText('')
+
+            if control.SetOverrideTexture then
+                control:SetOverrideTexture(up)
+            else
+                control:SetUpAltButtons(up, up, up, up)
+            end
+
+            control:Disable()
             control.Icon:Show()
             control:Enable()
         end
@@ -985,7 +1017,9 @@ function CommonLogic()
             -- The text
             if type == 'templates' and 'templates' then
                 control.Tmplnm.Width:Set(48)
-                control.Tmplnm:SetText(string.sub(control.Data.template.name, cutA, cutB))
+                if STR_Utf8Len(control.Data.template.name) >= cutA then
+                    control.Tmplnm:SetText(STR_Utf8SubString(control.Data.template.name, cutA, cutB))
+                end
             end
         end
     end
@@ -1096,14 +1130,137 @@ function OnRolloverHandler(button, state)
     end
 
     if state == 'enter' then
-        if item.type == 'item' or item.type == 'queuestack' or item.type == 'unitstack' or item.type == 'attachedunit' then
+        if item.type == 'item' then
             UnitViewDetail.Show(__blueprints[item.id], sortedOptions.selection[1], item.id)
+        elseif item.type == 'queuestack' or item.type == 'unitstack' or item.type == 'attachedunit' then
+            UnitViewDetail.Show(__blueprints[item.id], nil, item.id)
         elseif item.type == 'enhancement' then
             UnitViewDetail.ShowEnhancement(item.enhTable, item.unitID, item.icon, GetEnhancementPrefix(item.unitID, item.icon), sortedOptions.selection[1])
+        elseif item.type == 'enhancementqueue' then
+            UnitViewDetail.ShowEnhancement(item.enhancement, item.unitID, item.icon, GetEnhancementPrefix(item.unitID, item.icon), sortedOptions.selection[1])
         end
     else
         UnitViewDetail.Hide()
     end
+end
+
+function watchForQueueChange(unit)
+    if watchingUnit == unit then
+        return
+    end
+
+    updateQueue = false
+    watchingUnit = unit
+    ForkThread(function()
+        local threadWatchingUnit = watchingUnit
+        while unit:GetCommandQueue()[1].type ~= 'Script' do
+            WaitSeconds(0.2)
+        end
+
+        local selection = GetSelectedUnits() or {}
+        if lastDisplayType and table.getn(selection) == 1 and threadWatchingUnit == watchingUnit and selection[1] == threadWatchingUnit then
+            SetSecondaryDisplay(lastDisplayType)
+        end
+        watchingUnit = nil
+    end)
+end
+
+function checkBadClean(unit)
+    local enhancementQueue = getEnhancementQueue()
+    local queue = enhancementQueue[unit:GetEntityId()]
+
+    return previousModifiedCommandQueue[1].type == 'enhancementqueue' and queue and queue[1] and not string.find(queue[1].ID, 'Remove')
+end
+
+function OrderEnhancement(item, clean, destroy)
+    local units = sortedOptions.selection
+    local enhancementQueue = getEnhancementQueue()
+
+    SetIgnoreSelection(true)
+    for _, unit in units do
+        local orders = {}
+        local cleanOrder = clean
+        local id = unit:GetEntityId()
+        local existingEnhancements = EnhanceCommon.GetEnhancements(id)
+
+        SelectUnits({unit})
+
+        if clean and not EnhancementQueueFile.currentlyUpgrading(unit) then
+            enhancementQueue[id] = {}
+        end
+
+        local doOrder = true
+        local prereqAlreadyOrdered = false
+        local removeAlreadyOrdered = false
+
+        local slot = item.enhTable.Slot
+        local enhSlot = existingEnhancements[slot]
+        local enhTableId = item.enhTable.ID
+        local prereq = item.enhTable.Prerequisite
+
+        for _, enhancement in enhancementQueue[id] or {} do
+            local enhId = enhancement.ID
+            if enhancement.Slot == slot then
+                if string.find(enhId, 'Remove') and enhId == (enhSlot .. 'Remove') then
+                    removeAlreadyOrdered = true
+                elseif enhId == enhTableId or enhId ~= prereq then
+                    doOrder = false
+                    break
+                elseif enhId == prereq then
+                    prereqAlreadyOrdered = true
+                end
+            end
+        end
+
+        if enhSlot == enhTableId then
+            doOrder = false
+        end
+
+        if doOrder == false then
+            continue
+        end
+
+        if not removeAlreadyOrdered and enhSlot and enhSlot ~= prereq then
+            if not destroy then
+                continue
+            end
+
+            table.insert(orders, enhSlot .. 'Remove')
+        end
+
+        if cleanOrder and not unit:IsIdle() then
+            local cmdqueue = unit:GetCommandQueue()
+            if cmdqueue and cmdqueue[1] and cmdqueue[1].type == 'Script' then
+                cleanOrder = false
+            end
+        end
+
+        if prereq and prereq ~= enhSlot and not prereqAlreadyOrdered then
+            table.insert(orders, prereq)
+        end
+
+        table.insert(orders, item.id)
+
+        local first_order = true
+        for _, order in orders do
+            orderTable = {TaskName = 'EnhanceTask', Enhancement = order}
+            IssueCommand("UNITCOMMAND_Script", orderTable, cleanOrder)
+            if first_order and cleanOrder then
+                cleanOrder = false
+                first_order = false
+            end
+        end
+
+        if unit:IsInCategory('COMMAND') then
+            local availableOrders, availableToggles, buildableCategories = GetUnitCommandData({unit})
+            OnSelection(buildableCategories, {unit}, true)
+        end
+    end
+
+    SelectUnits(units)
+    SetIgnoreSelection(false)
+
+    controls.choices:Refresh(FormatData(sortedOptions[item.enhTable.Slot], item.enhTable.Slot))
 end
 
 function OnClickHandler(button, modifiers)
@@ -1307,6 +1464,8 @@ function OnClickHandler(button, modifiers)
                     if event.Modifiers.Middle then
                         ClearBuildTemplates()
                         local tempTemplate = table.deepcopy(activeTemplate)
+                        activeTemplate[1] = tempTemplate[2]
+                        activeTemplate[2] = tempTemplate[1]
                         for i = 3, table.getn(activeTemplate) do
                             local index = i
                             activeTemplate[index][3] = 0 - tempTemplate[index][4]
@@ -1321,37 +1480,45 @@ function OnClickHandler(button, modifiers)
             end
         end
     elseif item.type == 'enhancement' and button.Data.TooltipOnly == false then
-        local existingEnhancements = EnhanceCommon.GetEnhancements(sortedOptions.selection[1]:GetEntityId())
-        if existingEnhancements[item.enhTable.Slot] and existingEnhancements[item.enhTable.Slot] ~= item.enhTable.Prerequisite then
-            if existingEnhancements[item.enhTable.Slot] ~= item.id then
-                UIUtil.QuickDialog(GetFrame(0), "<LOC enhancedlg_0000>Choosing this enhancement will destroy the existing enhancement in this slot.  Are you sure?",
-                    "<LOC _Yes>", function()
-                        ForkThread(function()
-                            local orderData = {
-                                -- UserVerifyScript='/lua/ui/game/EnhanceCommand.lua',
-                                TaskName = "EnhanceTask",
-                                Enhancement = existingEnhancements[item.enhTable.Slot] .. 'Remove',
-                            }
-                            IssueCommand("UNITCOMMAND_Script", orderData, true)
-                            WaitSeconds(.5)
-                            orderData = {
-                                -- UserVerifyScript='/lua/ui/game/EnhanceCommand.lua',
-                                TaskName = "EnhanceTask",
-                                Enhancement = item.id,
-                            }
-                            IssueCommand("UNITCOMMAND_Script", orderData, true)
-                        end)
-                    end,
-                    "<LOC _No>", nil,
-                    nil, nil,
-                    true, {worldCover = true, enterButton = 1, escapeButton = 2})
+        local doOrder = true
+        local clean = not modifiers.Shift
+        local enhancementQueue = getEnhancementQueue()
+
+        for _, unit in sortedOptions.selection do
+            local unitId = unit:GetEntityId()
+            local slot = item.enhTable.Slot
+            local existingEnhancements = EnhanceCommon.GetEnhancements(unitId)
+
+            if existingEnhancements[slot] and existingEnhancements[slot] ~= item.enhTable.Prerequisite then
+                local alreadyWarned = false
+                for _, enhancement in enhancementQueue[unitId] or {} do
+                    if enhancement.ID == (existingEnhancements[slot] .. 'Remove') then
+                        alreadyWarned = true
+                        break
+                    end
+                end
+
+                if not alreadyWarned and existingEnhancements[slot] ~= item.id then
+                    UIUtil.QuickDialog(GetFrame(0), "<LOC enhancedlg_0000>Choosing this enhancement will destroy the existing enhancement in this slot.  Are you sure?", 
+                        "<LOC _Yes>",
+                        function()
+                            OrderEnhancement(item, clean, true)
+                        end,
+                        "<LOC _No>",
+                        function()
+                            OrderEnhancement(item, clean, false)
+                        end,
+                        nil, nil,
+                        true,  {worldCover = true, enterButton = 1, escapeButton = 2})
+
+                    doOrder = false
+                    break
+                end
             end
-        else
-            local orderData = {
-                TaskName = "EnhanceTask",
-                Enhancement = item.id,
-            }
-            IssueCommand("UNITCOMMAND_Script", orderData, true)
+        end
+
+        if doOrder then
+            OrderEnhancement(item, clean, false)
         end
     elseif item.type == 'queuestack' then
         local count = 1
@@ -1422,9 +1589,7 @@ function CreateTemplateOptionMenu(button, templateObj)
                 local controls = {}
                 for _, entry in theTemplate.templateData do
                     if type(entry) == 'table' then
-                        if not contents[entry[1]] then
-                            contents[entry[1]] = true
-                        end
+                        contents[entry.id or entry[1]] = true
                     end
                 end
                 for iconType, _ in contents do
@@ -1756,6 +1921,10 @@ function CreateExtraControls(controlType)
     end
 end
 
+function updateCommandQueue()
+    OnQueueChanged(currentCommandQueue)
+end
+
 local insertIntoTableLowestTechFirst = import('/lua/ui/game/selectionsort.lua').insertIntoTableLowestTechFirst
 function FormatData(unitData, type)
     local retData = {}
@@ -2051,18 +2220,163 @@ function FormatData(unitData, type)
         end
     end
 
+    if type == 'RCH' or type == 'Back' or type == 'LCH' then
+        local enhancementQueue = getEnhancementQueue()
+        for _, iconData in retData do
+            iconData.Disabled = false
+
+            if table.getn(sortedOptions.selection) == 1 then
+                for _, enhancement in (enhancementQueue[sortedOptions.selection[1]:GetEntityId()] or {}) do
+                    if enhancement.Slot == iconData.enhTable.Slot and enhancement.ID ~= iconData.enhTable.Prerequisite and not string.find(enhancement.ID, 'Remove') then
+                        iconData.Disabled = true
+                        break
+                    end
+                end
+            else
+                iconData.Selected = false
+            end
+        end
+
+        SetSecondaryDisplay('buildQueue')
+    end
     return retData
 end
 
+function HandleIntegrationIssue()
+    modifiedCommandQueue = table.copy(currentCommandQueue or {})
+
+    local splitStack = nil
+    local currCount = 1
+    for _, command in previousModifiedCommandQueue do
+        if command.type == 'enhancementqueue' then
+            table.insert(modifiedCommandQueue, currCount, command)
+            currCount = currCount + 1
+        else
+            local currentCount = modifiedCommandQueue[currCount]
+            if currentCount and currentCount.displayCount then
+                currentCount.displayCount = nil
+            end
+
+            local id = command.id
+            local count = command.displayCount
+
+            if splitStack and splitStack.id == id then
+                table.insert(modifiedCommandQueue, currCount, splitStack)
+                splitStack = nil
+            end
+            if currentCount and currentCount.id == id then
+                if count and currentCount.count > count then
+                    splitStack = {id = id, count = currentCount.count - count}
+                    currentCount.displayCount = count
+                end
+                currCount = currCount + 1
+            end
+        end
+    end
+end
+
+function IntegrateEnhancements()
+    local uid = sortedOptions.selection[1]:GetEntityId()
+    local fullCommandQueue = sortedOptions.selection[1]:GetCommandQueue()
+    local enhancementQueue = getEnhancementQueue()
+    local found = {}
+    local currCount = 1
+    local currEnh = 1
+    local skip = 0
+    local skippingCommand = nil
+
+    local currentEnhancements = EnhanceCommon.GetEnhancements(uid)
+    if currentEnhancements then
+        for _, enhancement in currentEnhancements do
+            found[enhancement] = true
+        end
+    end
+
+    for _, command in fullCommandQueue do
+        if command.type == 'Script' then
+            if skip > 0 then
+                local splitCommand = {id = skippingCommand.id, count = skip}
+                table.insert(modifiedCommandQueue, currCount, splitCommand)
+                skippingCommand.displayCount = skippingCommand.count - skip
+                skip = 0
+            end
+
+            local enhancement = enhancementQueue[uid][currEnh]
+            if not enhancement then
+                HandleIntegrationIssue()
+                return
+            end
+
+            local newCommand = {icon = enhancement.Icon, id = enhancement.UnitID, type = 'enhancementqueue', name = enhancement.Name, enhancement = enhancement}
+            if not found[enhancement.ID] and not string.find(enhancement.ID, 'Remove') then
+                table.insert(modifiedCommandQueue, currCount, newCommand)
+                currCount = currCount + 1
+            end
+
+            found[enhancement.ID] = true
+
+            currEnh = currEnh + 1
+        elseif command.type == 'BuildMobile' then
+            if skip > 0 then
+                skip = skip - 1
+            else
+                if not modifiedCommandQueue[currCount] then
+                    HandleIntegrationIssue()
+                    return
+                end
+
+                skip = modifiedCommandQueue[currCount].count - 1
+                skippingCommand = modifiedCommandQueue[currCount]
+                skippingCommand.displayCount = nil
+                currCount = currCount + 1
+            end
+        end
+    end
+
+    local size = table.getn(enhancementQueue[uid] or {})
+    if enhancementQueue[uid] and currEnh < (size + 1) then
+        while currEnh < (size + 1) do
+            EnhancementQueueFile.removeEnhancement(sortedOptions.selection[1])
+            size = size - 1
+        end
+        SetSecondaryDisplay('buildQueue')
+    end
+
+    previousModifiedCommandQueue = modifiedCommandQueue
+end
+
 function SetSecondaryDisplay(type)
+    lastDisplayType = type
     if updateQueue then -- Don't update the queue the tick after a buttonreleasecallback
         local data = {}
         if type == 'buildQueue' then
-            if currentCommandQueue and table.getn(currentCommandQueue) > 0 then
-                for index, unit in currentCommandQueue do
-                    table.insert(data, {type = 'queuestack', id = unit.id, count = unit.count, position = index})
+            modifiedCommandQueue = table.copy(currentCommandQueue or {})
+            if table.getn(sortedOptions.selection) == 1 then
+                IntegrateEnhancements()
+            end
+
+            previousModifiedCommandQueue = modifiedCommandQueue
+            if modifiedCommandQueue and table.getn(modifiedCommandQueue) > 0 then
+                local index = 1
+                local newStack = nil
+                local lastStack = nil
+
+                for _, item in modifiedCommandQueue do
+                    if item.type == 'enhancementqueue' then
+                        table.insert(data, {type = 'enhancementqueue', unitID = item.id, icon = item.icon, name = item.name, enhancement = item.enhancement})
+                    else
+                        newStack = {type = 'queuestack', id = item.id, count = item.displayCount or item.count, position = index}
+                        if lastStack and lastStack.id == newStack.id then
+                            newStack.position = index - 1
+                        else
+                            index = index + 1
+                            lastStack = newStack
+                        end
+                        table.insert(data, newStack)
+                    end
                 end
             end
+
             if table.getn(sortedOptions.selection) == 1 and table.getn(data) > 0 then
                 controls.secondaryProgress:SetNeedsFrameUpdate(true)
             else
@@ -2117,6 +2431,8 @@ function RefreshUI()
 end
 
 function OnSelection(buildableCategories, selection, isOldSelection)
+    buildableCategories = EnhancementQueueFile.ModifyBuildablesForACU(buildableCategories, selection)
+
     if table.empty(selection) then
         sortedOptions.selection = {}
     end
@@ -2518,7 +2834,7 @@ function HandleBuildModeKey(key)
     if capturingKeys then
         ProcessKeybinding(key)
     else
-        BuildTemplate(key)
+        return BuildTemplate(key)
     end
 end
 

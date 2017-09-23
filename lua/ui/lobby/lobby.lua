@@ -46,6 +46,8 @@ local UnitsAnalyzer = import('/lua/ui/lobby/UnitsAnalyzer.lua')
 
 local IsSyncReplayServer = false
 
+local AddUnicodeCharToEditText = import('/lua/UTF.lua').AddUnicodeCharToEditText
+
 if HasCommandLineArg("/syncreplay") and HasCommandLineArg("/gpgnet") then
     IsSyncReplayServer = true
 end
@@ -179,6 +181,19 @@ local commands = {
     private = ParseWhisper,
     w = ParseWhisper,
     whisper = ParseWhisper,
+}
+
+local numberOfChatLinesForFontSize = {
+    [9] = 18,
+    [10] = 16,
+    [11] = 15,
+    [12] = 14,
+    [13] = 13,
+    [14] = 13,
+    [15] = 12,
+    [16] = 11,
+    [17] = 11,
+    [18] = 10,
 }
 
 local Strings = LobbyComm.Strings
@@ -524,8 +539,14 @@ function ReallyCreateLobby(protocol, localPort, desiredPlayerName, localPlayerUI
         local quitDialog = UIUtil.QuickDialog(GUI,
             "<LOC lobby_0000>Exit game lobby?",
             "<LOC _Yes>", function()
-                ReturnToMenu(false)
                 EscapeHandler.PopEscapeHandler()
+                if HasCommandLineArg("/gpgnet") then
+                    -- Quit to desktop
+                    EscapeHandler.SafeQuit()
+                else
+                    -- Back to main menu
+                    ReturnToMenu(false)
+                end
             end,
 
             -- Fight to keep our focus on the chat input box, to prevent keybinding madness.
@@ -823,13 +844,13 @@ function SetSlotInfo(slotNum, playerInfo)
     --
     -- The predicate was getting unpleasantly long to read.
     local function teamSelectionEnabled(autoTeams, ready, locallyOwned, isHost)
-        if isHost and not playerInfo.Human then
-            return true
-        end
-
         -- If autoteams has control, no selector for you.
         if autoTeams ~= 'none' then
             return false
+        end
+
+        if isHost and not playerInfo.Human then
+            return true
         end
 
         -- You can control your own one when you're not ready.
@@ -1369,6 +1390,7 @@ local function AssignRandomStartSpots()
     end
 
     local AutoTeams = gameInfo.GameOptions.AutoTeams
+    local positionGroups = {}
     local teams = {}
 
     -- Used to actualise the virtual teams produced by the "Team -" no-team team.
@@ -1376,6 +1398,7 @@ local function AssignRandomStartSpots()
     for i = 1, numAvailStartSpots do
         if not gameInfo.ClosedSlots[i] then
             local team = nil
+            local group = nil
 
             if AutoTeams == 'lvsr' then
                 local midLine = GUI.mapView.Left() + (GUI.mapView.Width() / 2)
@@ -1405,7 +1428,14 @@ local function AssignRandomStartSpots()
                 team = gameInfo.AutoTeams[i]
             else -- none
                 team = gameInfo.PlayerOptions[i].Team
+                group = 1
             end
+
+            group = group or team
+            if not positionGroups[group] then
+                positionGroups[group] = {}
+            end
+            table.insert(positionGroups[group], i)
 
             if team ~= nil then
                 -- Team 1 secretly represents "No team", so give them a real team (but one that
@@ -1418,6 +1448,8 @@ local function AssignRandomStartSpots()
             end
         end
     end
+    gameInfo.GameOptions.RandomPositionGroups = positionGroups
+
     -- shuffle the array for randomness.
     for i, team in teams do
         teams[i] = table.shuffle(team)
@@ -1432,7 +1464,7 @@ local function AssignRandomStartSpots()
         end
     end
 
-    if teamSpawn == 'random' then
+    if teamSpawn == 'random' or teamSpawn == 'random_reveal' then
         s = autobalance_random(ratingTable, teams)
         q = autobalance_quality(s)
         rearrangePlayers{setup=s, quality=q}
@@ -1460,7 +1492,7 @@ local function AssignRandomStartSpots()
     end
 
     local n_random = 0
-    local frac = teamSpawn == 'balanced_flex' and 0.95 or 1
+    local frac = (teamSpawn == 'balanced_flex' or teamSpawn == 'balanced_flex_reveal') and 0.95 or 1
     -- add 100 random compositions and keep 3 with at least <frac%> of best quality
     for i=1, 100 do
         s = autobalance_random(ratingTable, teams)
@@ -1473,7 +1505,7 @@ local function AssignRandomStartSpots()
         end
     end
 
-    if teamSpawn == 'balanced_flex' then
+    if teamSpawn == 'balanced_flex' or teamSpawn == 'balanced_flex_reveal' then
         setups = table.shuffle(setups)
     end
 
@@ -1611,7 +1643,7 @@ function PublicChat(text)
             Text = text,
         }
         )
-    AddChatText("["..localPlayerName.."] " .. text)
+    AddChatText("["..localPlayerName.."] " .. text, true)
 end
 
 function PrivateChat(targetID,text)
@@ -2060,6 +2092,11 @@ local function UpdateGame()
 
     SetRuleTitleText(gameInfo.GameOptions.GameRules or "")
     SetGameTitleText(gameInfo.GameOptions.Title or LOC("<LOC lobui_0427>FAF Game Lobby"))
+    
+    if not singlePlayer and isHost and GUI.autoTeams then
+        GUI.autoTeams:SetState(gameInfo.GameOptions.AutoTeams,true)
+        Tooltip.DestroyMouseoverDisplay()
+    end
 end
 
 --- Update the game quality display
@@ -2125,6 +2162,9 @@ local OptionUtils = {
     -- Set all game options to their default values.
     SetDefaults = function()
         local options = {}
+        for index, option in teamOpts do
+            options[option.key] = option.values[option.default].key or option.values[option.default]
+        end
         for index, option in globalOpts do
             -- Exception to make AllowObservers work because the engine requires
             -- the keys to be bool. Custom options should use 'True' or 'False'
@@ -2138,7 +2178,9 @@ local OptionUtils = {
         for index, option in AIOpts do
             options[option.key] = option.values[option.default].key or option.values[option.default]
         end
-
+        
+        options.RestrictedCategories = {}
+        
         SetGameOptions(options)
     end
 }
@@ -2330,7 +2372,6 @@ function CreateSlotsUI(makeLabel)
         local flag = Bitmap(newSlot, UIUtil.SkinnableFile("/countries/world.dds"))
         newSlot.KinderCountry = flag
         flag.Width:Set(COLUMN_WIDTHS[2])
-        flag.Height:Set(newSlot.Height)
         newSlot:AddChild(flag)
 
         -- TODO: Factorise this boilerplate.
@@ -2814,34 +2855,37 @@ function CreateUI(maxPlayers)
         function() return GUI.chatPanel.Width() - 20 end,
         function() return GUI.chatPanel.Height() - GUI.chatBG.Height() - 2 end
 )
-    GUI.chatDisplay:SetFont(UIUtil.bodyFont, tonumber(Prefs.GetFromCurrentProfile('LobbyChatFontSize')) or 14)
+    local fontSize = tonumber(Prefs.GetFromCurrentProfile('LobbyChatFontSize')) or 14
+    GUI.chatDisplay:SetFont(UIUtil.bodyFont, fontSize)
     LayoutHelpers.AtLeftTopIn(GUI.chatDisplay, GUI.chatPanel, 4, 2)
     LayoutHelpers.DepthOverParent(GUI.chatDisplay, GUI.chatPanel, -1)
 
     GUI.chatPanel.top = 0
+    GUI.chatPanel.numberOfLines = numberOfChatLinesForFontSize[fontSize]
     GUI.chatPanel.GetScrollValues = function(self, axis)
         local size = GUI.chatDisplay:GetItemCount()
-        return 0, size, self.top, math.min(self.top + 13, size)
+        return 0, size, self.top, math.min(self.top + self.numberOfLines, size)
     end
 
     GUI.chatPanel.ScrollLines = function(self, axis, delta)
         self:ScrollSetTop(axis, self.top + math.floor(delta))
     end
     GUI.chatPanel.ScrollPages = function(self, axis, delta)
-        self:ScrollSetTop(axis, self.top + math.floor(delta) * 13)
+        self:ScrollSetTop(axis, self.top + math.floor(delta) * self.numberOfLines)
     end
     GUI.chatPanel.ScrollSetTop = function(self, axis, top)
         local oldTop = self.top
         top = math.floor(top)
         if top == self.top then return end
         local size = GUI.chatDisplay:GetItemCount()
-        self.top = math.max(math.min(size - 13, top), 0)
-        if oldTop > self.top then
-            GUI.chatDisplay:ShowItem(self.top)
-        else
-            GUI.chatDisplay:ShowItem(self.top+12)
+        self.top = math.max(math.min(size - self.numberOfLines, top), 0)
+        if oldTop <= self.top then
+            -- ShowItem doesn't scroll the chat if the item is already visible. If it isn't visible yet it'll put it on the top of chat.
+            -- So we scroll down all the way first and then back up if necessary and ShowItem will give us appropriate item at the top then.
+            GUI.chatDisplay:ShowItem(size)
         end
-        if self.top >= GUI.chatDisplay:GetItemCount() - 14 then
+        GUI.chatDisplay:ShowItem(self.top)
+        if self.top >= GUI.chatDisplay:GetItemCount() - (self.numberOfLines + 1) then
             GUI.newMessageArrow:Disable()
         end
     end
@@ -2857,6 +2901,12 @@ function CreateUI(maxPlayers)
     GUI.chatPanel.IsScrollable = function(self, axis)
         return true
     end
+    GUI.chatPanel.ScrollToBottom = function(self)
+        self:ScrollSetTop(nil,GUI.chatDisplay:GetItemCount() - self.numberOfLines)
+    end
+    GUI.chatPanel.IsScrolledToBottom = function(self)
+        return self.top >= GUI.chatDisplay:GetItemCount() - self.numberOfLines
+    end
 
     local newMessageArrow = Button(GUI.chatPanel, '/textures/ui/common/lobby/chat_arrow/arrow_up.dds', '/textures/ui/common/lobby/chat_arrow/arrow_down.dds', '/textures/ui/common/lobby/chat_arrow/arrow_down.dds','/textures/ui/common/lobby/chat_arrow/arrow_dis.dds', "UI_Arrow_Click")
     GUI.newMessageArrow = newMessageArrow
@@ -2867,7 +2917,7 @@ function CreateUI(maxPlayers)
     newMessageArrow.Width:Set(25)
     newMessageArrow.Height:Set(25)
     GUI.newMessageArrow.OnClick = function(this, modifiers)
-        GUI.chatPanel:ScrollSetTop(nil,GUI.chatDisplay:GetItemCount()-13)
+        GUI.chatPanel:ScrollToBottom()
     end
     GUI.newMessageArrow:Disable()
 
@@ -2880,93 +2930,8 @@ function CreateUI(maxPlayers)
     chatBG.Width:Set(GUI.chatPanel.Width() - 16)
     chatBG.Height:Set(24)
 
-    GUI.chatEdit = Edit(GUI.chatPanel)
-    LayoutHelpers.AtLeftTopIn(GUI.chatEdit, GUI.chatBG, 4, 3)
-    GUI.chatEdit.Width:Set(GUI.chatBG.Width() - 9)
-    GUI.chatEdit.Height:Set(22)
-    GUI.chatEdit:SetFont(UIUtil.bodyFont, 16)
-    GUI.chatEdit:SetForegroundColor(UIUtil.fontColor)
-    GUI.chatEdit:ShowBackground(false)
-    GUI.chatEdit:SetDropShadow(true)
-    GUI.chatEdit:AcquireFocus()
-
-    GUI.chatDisplayScroll = UIUtil.CreateLobbyVertScrollbar(GUI.chatPanel, -15, -2, 0)
-
-    GUI.chatEdit:SetMaxChars(200)
-    GUI.chatEdit.OnCharPressed = function(self, charcode)
-        if charcode == UIUtil.VK_TAB then
-            return true
-        end
-
-        local charLim = self:GetMaxChars()
-        if STR_Utf8Len(self:GetText()) >= charLim then
-            local sound = Sound({Cue = 'UI_Menu_Error_01', Bank = 'Interface',})
-            PlaySound(sound)
-        end
-    end
-
-    -- We work extremely hard to keep keyboard focus on the chat box, otherwise users can trigger
-    -- in-game keybindings in the lobby.
-    -- That would be very bad. We should probably instead just not assign those keybindings yet...
-    GUI.chatEdit.OnLoseKeyboardFocus = function(self)
-        GUI.chatEdit:AcquireFocus()
-    end
-
-    local commandQueueIndex = 0
-    local commandQueue = {}
-    GUI.chatEdit.OnEnterPressed = function(self, text)
-        if text ~= "" then
-            GpgNetSend('Chat', text)
-            table.insert(commandQueue, 1, text)
-            commandQueueIndex = 0
-            if string.sub(text, 1, 1) == '/' then
-                local spaceStart = string.find(text, " ") or string.len(text) + 1
-                local comKey = string.sub(text, 2, spaceStart - 1)
-                local params = string.sub(text, spaceStart + 1)
-                local commandFunc = commands[string.lower(comKey)]
-                if not commandFunc then
-                    AddChatText(LOCF("<LOC lobui_0396>Command Not Known: %s", comKey))
-                    return
-                end
-
-                commandFunc(params)
-            else
-                PublicChat(text)
-            end
-        end
-    end
-
-    GUI.chatEdit.OnEscPressed = function(self, text)
-        -- The default behaviour buggers up our escape handlers. Just delegate the escape push to
-        -- the escape handling mechanism.
-        EscapeHandler.HandleEsc(true)
-
-        -- Don't clear the textbox, either.
-        return true
-    end
-
-    --- Handle up/down arrow presses for the chat box.
-    GUI.chatEdit.OnNonTextKeyPressed = function(self, keyCode)
-        if commandQueue and table.getsize(commandQueue) > 0 then
-            if keyCode == 38 then
-                if commandQueue[commandQueueIndex + 1] then
-                    commandQueueIndex = commandQueueIndex + 1
-                    self:SetText(commandQueue[commandQueueIndex])
-                end
-            end
-            if keyCode == 40 then
-                if commandQueueIndex ~= 1 then
-                    if commandQueue[commandQueueIndex - 1] then
-                        commandQueueIndex = commandQueueIndex - 1
-                        self:SetText(commandQueue[commandQueueIndex])
-                    end
-                else
-                    commandQueueIndex = 0
-                    self:ClearText()
-                end
-            end
-        end
-    end
+    -- Set up the chat edit buttons and functions
+    setupChatEdit(GUI.chatPanel)
 
     ---------------------------------------------------------------------------
     -- Option display
@@ -3192,10 +3157,20 @@ function CreateUI(maxPlayers)
 
     -- Exit Button
     GUI.exitButton = UIUtil.CreateButtonWithDropshadow(GUI.chatPanel, '/BUTTON/medium/', LOC("<LOC tooltipui0285>Exit"))
-    GUI.exitButton.label:SetText(LOC("<LOC _Exit>"))
     LayoutHelpers.AtLeftIn(GUI.exitButton, GUI.chatPanel, 33)
     LayoutHelpers.AtVerticalCenterIn(GUI.exitButton, launchGameButton, 7)
+    if HasCommandLineArg("/gpgnet") then
+        -- Quit to desktop
+        GUI.exitButton.label:SetText(LOC("<LOC _Exit>"))
+        Tooltip.AddButtonTooltip(GUI.exitButton, 'esc_exit')
+    else
+        -- Back to main menu
+        GUI.exitButton.label:SetText(LOC("<LOC _Back>"))
+        Tooltip.AddButtonTooltip(GUI.exitButton, 'esc_quit')
+    end
+
     GUI.exitButton.OnClick = GUI.exitLobbyEscapeHandler
+
 
     -- Small buttons are 100 wide, 44 tall
 
@@ -3288,10 +3263,54 @@ function CreateUI(maxPlayers)
             AssignAutoTeams()
         end
     end
+    
+    -- CLOSE/OPEN EMPTY SLOTS BUTTON --
+    GUI.closeEmptySlots = UIUtil.CreateButtonStd(GUI.observerPanel, '/BUTTON/closeslots/')
+    LayoutHelpers.AtLeftTopIn(GUI.closeEmptySlots, GUI.defaultOptions, 0, 47)
+    Tooltip.AddButtonTooltip(GUI.closeEmptySlots, 'lob_close_empty_slots')
+    if not isHost then
+        GUI.closeEmptySlots:Hide()
+        LayoutHelpers.AtLeftTopIn(GUI.closeEmptySlots, GUI.defaultOptions, -40, 47)
+    else
+        GUI.closeEmptySlots.OnClick = function(self, modifiers)
+            if lobbyComm:IsHost() then
+                if modifiers.Ctrl then
+                    for slot = 1,numOpenSlots do
+                        HostUtils.SetSlotClosed(slot, false)
+                    end
+                    return
+                end
+                local openSpot = false
+                for slot = 1,numOpenSlots do
+                    openSpot = openSpot or not (gameInfo.PlayerOptions[slot] or gameInfo.ClosedSlots[slot])
+                end
+                if modifiers.Right and gameInfo.AdaptiveMap then
+                    for slot = 1,numOpenSlots do
+                        if openSpot then
+                            if not (gameInfo.PlayerOptions[slot] or gameInfo.ClosedSlots[slot]) then
+                                HostUtils.SetSlotClosedSpawnMex(slot)
+                            end
+                        else
+                            if gameInfo.ClosedSlots[slot] and gameInfo.SpawnMex[slot] then
+                                HostUtils.SetSlotClosed(slot, false)
+                            end
+                        end
+                    end
+                else
+                    for slot = 1,numOpenSlots do
+                        if not gameInfo.SpawnMex[slot] then
+                            HostUtils.SetSlotClosed(slot, openSpot)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
 
     -- GO OBSERVER BUTTON --
     GUI.becomeObserver = UIUtil.CreateButtonStd(GUI.observerPanel, '/BUTTON/observer/')
-    LayoutHelpers.AtLeftTopIn(GUI.becomeObserver, GUI.defaultOptions, 40, 47)
+    LayoutHelpers.RightOf(GUI.becomeObserver, GUI.closeEmptySlots, -19)
     Tooltip.AddButtonTooltip(GUI.becomeObserver, 'lob_become_observer')
     GUI.becomeObserver.OnClick = function()
         if IsPlayer(localPlayerID) then
@@ -3311,7 +3330,7 @@ function CreateUI(maxPlayers)
 
     -- CPU BENCH BUTTON --
     GUI.rerunBenchmark = UIUtil.CreateButtonStd(GUI.observerPanel, '/BUTTON/cputest/', '', 11)
-    LayoutHelpers.RightOf(GUI.rerunBenchmark, GUI.becomeObserver, -20)
+    LayoutHelpers.RightOf(GUI.rerunBenchmark, GUI.becomeObserver, -19)
     Tooltip.AddButtonTooltip(GUI.rerunBenchmark,{text=LOC("<LOC lobui_0425>Run CPU Benchmark Test"), body=LOC("<LOC lobui_0426>Recalculates your CPU rating.")})
 
     -- Observer List
@@ -3353,6 +3372,7 @@ function CreateUI(maxPlayers)
         -- mostly forget that we're in single-player mode everywhere else (stuff silently becomes a
         -- nop, instead of needing to keep checking if UI controls actually exist...
 
+        GUI.closeEmptySlots:Hide()
         GUI.becomeObserver:Hide()
         GUI.autoTeams:Hide()
         GUI.defaultOptions:Hide()
@@ -3397,6 +3417,105 @@ function CreateUI(maxPlayers)
 
     if not singlePlayer then
         CreateCPUMetricUI()
+    end
+end
+
+function setupChatEdit(chatPanel)
+    GUI.chatEdit = Edit(chatPanel)
+    LayoutHelpers.AtLeftTopIn(GUI.chatEdit, GUI.chatBG, 4, 3)
+    GUI.chatEdit.Width:Set(GUI.chatBG.Width() - 9)
+    GUI.chatEdit.Height:Set(22)
+    GUI.chatEdit:SetFont(UIUtil.bodyFont, 16)
+    GUI.chatEdit:SetForegroundColor(UIUtil.fontColor)
+    GUI.chatEdit:ShowBackground(false)
+    GUI.chatEdit:SetDropShadow(true)
+    GUI.chatEdit:AcquireFocus()
+
+    GUI.chatDisplayScroll = UIUtil.CreateLobbyVertScrollbar(chatPanel, -15, -2, 0)
+
+    GUI.chatEdit:SetMaxChars(200)
+    GUI.chatEdit.OnCharPressed = function(self, charcode)
+        if charcode == UIUtil.VK_TAB then
+            return true
+        end
+
+        local charLim = self:GetMaxChars()
+        if STR_Utf8Len(self:GetText()) >= charLim then
+            local sound = Sound({Cue = 'UI_Menu_Error_01', Bank = 'Interface',})
+            PlaySound(sound)
+        end
+    end
+
+    -- We work extremely hard to keep keyboard focus on the chat box, otherwise users can trigger
+    -- in-game keybindings in the lobby.
+    -- That would be very bad. We should probably instead just not assign those keybindings yet...
+    GUI.chatEdit.OnLoseKeyboardFocus = function(self)
+        GUI.chatEdit:AcquireFocus()
+    end
+
+    local commandQueueIndex = 0
+    local commandQueue = {}
+    GUI.chatEdit.OnEnterPressed = function(self, text)
+        if text ~= "" then
+            GpgNetSend('Chat', text)
+            table.insert(commandQueue, 1, text)
+            commandQueueIndex = 0
+            if string.sub(text, 1, 1) == '/' then
+                local spaceStart = string.find(text, " ") or string.len(text) + 1
+                local comKey = string.sub(text, 2, spaceStart - 1)
+                local params = string.sub(text, spaceStart + 1)
+                local commandFunc = commands[string.lower(comKey)]
+                if not commandFunc then
+                    AddChatText(LOCF("<LOC lobui_0396>Command Not Known: %s", comKey))
+                    return
+                end
+
+                commandFunc(params)
+            else
+                PublicChat(text)
+            end
+        end
+    end
+
+    GUI.chatEdit.OnEscPressed = function(self, text)
+        -- The default behaviour buggers up our escape handlers. Just delegate the escape push to
+        -- the escape handling mechanism.
+        if HasCommandLineArg("/gpgnet") then
+            -- Quit to desktop
+            EscapeHandler.HandleEsc(true)
+        else
+            -- Back to main menu
+            GUI.exitButton.OnClick()
+        end
+
+        -- Don't clear the textbox, either.
+        return true
+    end
+
+    --- Handle up/down arrow presses for the chat box.
+    GUI.chatEdit.OnNonTextKeyPressed = function(self, keyCode)
+        if AddUnicodeCharToEditText(self, keyCode) then
+            return
+        end
+        if commandQueue and table.getsize(commandQueue) > 0 then
+            if keyCode == 38 then
+                if commandQueue[commandQueueIndex + 1] then
+                    commandQueueIndex = commandQueueIndex + 1
+                    self:SetText(commandQueue[commandQueueIndex])
+                end
+            end
+            if keyCode == 40 then
+                if commandQueueIndex ~= 1 then
+                    if commandQueue[commandQueueIndex - 1] then
+                        commandQueueIndex = commandQueueIndex - 1
+                        self:SetText(commandQueue[commandQueueIndex])
+                    end
+                else
+                    commandQueueIndex = 0
+                    self:ClearText()
+                end
+            end
+        end
     end
 end
 
@@ -3635,17 +3754,18 @@ function EveryoneHasEstablishedConnections(check_observers)
     return result
 end
 
-function AddChatText(text)
+function AddChatText(text, scrollToBottom)
     if not GUI.chatDisplay then
         LOG("Can't add chat text -- no chat display")
         LOG("text=" .. repr(text))
         return
     end
-
+    
+    local scrolledToBottom = GUI.chatPanel:IsScrolledToBottom() or scrollToBottom
+    
     GUI.chatDisplay:AppendLine(text)
-
-    if GUI.chatPanel.top >= GUI.chatDisplay:GetItemCount()-14 then
-        GUI.chatPanel:ScrollSetTop(nil,GUI.chatDisplay:GetItemCount()-13)
+    if scrolledToBottom then
+        GUI.chatPanel:ScrollToBottom()
     else
         GUI.newMessageArrow:Enable()
     end
@@ -4273,16 +4393,13 @@ function InitLobbyComm(protocol, localPort, desiredPlayerName, localPlayerUID, n
 
         -- The key, LastScenario, is referred to from GPG code we don't hook.
         if not self.desiredScenario or self.desiredScenario == "" then
-            local scenarioInfo = MapUtil.LoadScenario(Prefs.GetFromCurrentProfile("LastScenario"))
-            if scenarioInfo and scenarioInfo.type == UIUtil.requiredType then
-                self.desiredScenario = Prefs.GetFromCurrentProfile("LastScenario")
-            else
-                self.desiredScenario = UIUtil.defaultScenario
-            end
+            self.desiredScenario = Prefs.GetFromCurrentProfile("LastScenario")
         end
-        if self.desiredScenario and self.desiredScenario ~= "" then
-            SetGameOption('ScenarioFile', self.desiredScenario, true)
+        local scenarioInfo = MapUtil.LoadScenario(self.desiredScenario)
+        if not scenarioInfo or scenarioInfo.type != UIUtil.requiredType then
+            self.desiredScenario = UIUtil.defaultScenario
         end
+        SetGameOption('ScenarioFile', self.desiredScenario, true)
 
         GUI.keepAliveThread = ForkThread(
         -- Eject players who haven't sent a heartbeat in a while
@@ -4862,7 +4979,10 @@ end
 
 function SetGameTitleText(title)
     GUI.titleText:SetColor("B9BFB9")
-    GUI.titleText:SetText(title or LOC("<LOC lobui_0427>FAF Game Lobby"))
+    if title == '' then
+        title = LOC("<LOC lobui_0427>FAF Game Lobby")
+    end
+    GUI.titleText:SetText(title)
 end
 
 function ShowTitleDialog()
@@ -5092,10 +5212,16 @@ function ShowLobbyOptionsDialog()
     slider_Chat_SizeFont:SetValue(currentFontSize)
 
     slider_Chat_SizeFont.OnValueChanged = function(self, newValue)
+        local isScrolledDown = GUI.chatPanel:IsScrolledToBottom()
+    
         local sliderValue = math.floor(slider_Chat_SizeFont._currentValue())
         slider_Chat_SizeFont_TEXT:SetText(LOC("<LOC lobui_0404> ").. sliderValue)
         GUI.chatDisplay:SetFont(UIUtil.bodyFont, sliderValue)
         Prefs.SetToCurrentProfile('LobbyChatFontSize', sliderValue)
+        GUI.chatPanel.numberOfLines = numberOfChatLinesForFontSize[sliderValue]
+        if isScrolledDown then
+            GUI.chatPanel:ScrollToBottom()
+        end
     end
     --
     local cbox_WindowedLobby = UIUtil.CreateCheckbox(dialogContent, '/CHECKBOX/', LOC("<LOC lobui_0402>Windowed mode"))
@@ -5123,6 +5249,17 @@ function ShowLobbyOptionsDialog()
         end
         RefreshLobbyBackground()
     end
+    
+    local cbox_FactionFontColor = UIUtil.CreateCheckbox(dialogContent, '/CHECKBOX/', LOC("<LOC lobui_0411>Faction Font Color"))
+    LayoutHelpers.AtRightTopIn(cbox_FactionFontColor, dialogContent, 20, 94)
+    cbox_FactionFontColor.OnCheck = function(self, checked)
+        if checked then
+            Prefs.SetOption('faction_font_color', true)
+        else
+            Prefs.SetOption('faction_font_color', false)
+        end
+        UIUtil.UpdateCurrentSkin()
+    end
     -- Quit button
     local QuitButton = UIUtil.CreateButtonWithDropshadow(dialogContent, '/BUTTON/medium/', LOC("<LOC _Close>Close"))
     LayoutHelpers.AtHorizontalCenterIn(QuitButton, dialogContent, 0)
@@ -5141,6 +5278,9 @@ function ShowLobbyOptionsDialog()
     --
     local LobbyBackgroundStretch = Prefs.GetFromCurrentProfile('LobbyBackgroundStretch') or 'true'
     cbox_StretchBG:SetCheck(LobbyBackgroundStretch == 'true', true)
+    --
+    local FactionFontColor = Prefs.GetOption('faction_font_color')
+    cbox_FactionFontColor:SetCheck(FactionFontColor, true)
 end
 
 -- Load and return the current list of presets from persistent storage.
@@ -5426,7 +5566,11 @@ end
 -- Load the given preset
 function LoadPreset(presetIndex)
     local preset = LoadPresetsList()[presetIndex]
-
+    
+    if not preset.GameOptions.RestrictedCategories then
+        preset.GameOptions.RestrictedCategories = {}
+    end
+    
     SetGameOptions(preset.GameOptions, true)
 
     rehostPlayerOptions = preset.PlayerOptions
@@ -5712,6 +5856,7 @@ function InitHostUtils()
                 index = index + 1
             end
 
+            HostUtils.SetPlayerNotReady(playerSlot)
             local ownerID = gameInfo.PlayerOptions[playerSlot].OwnerID
             gameInfo.Observers[index] = gameInfo.PlayerOptions[playerSlot]
             gameInfo.PlayerOptions[playerSlot] = nil

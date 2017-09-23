@@ -15,6 +15,7 @@ local LayoutHelpers = import('/lua/maui/layouthelpers.lua')
 local Effect = import('/lua/maui/effecthelpers.lua')
 
 local upgradeTab = import('/lua/keymap/upgradeTab.lua').upgradeTab
+local ModifyBuildables = import('/lua/ui/notify/enhancementqueue.lua').ModifyBuildablesForACU
 
 local unitkeygroups
 local cyclePos
@@ -57,7 +58,7 @@ function initCycleMap()
     cycleMap.Width:Set(400)
     cycleMap.Height:Set(150)
     cycleMap.Top:Set(function() return GetFrame(0).Bottom()*.75 end)
-    cycleMap.Left:Set(function() return (GetFrame(0).Right()-cycleMap.Width())/2    end)
+    cycleMap.Left:Set(function() return (GetFrame(0).Right()-cycleMap.Width())/2 end)
     cycleMap:DisableHitTest()
     cycleMap:Hide()
 
@@ -181,7 +182,7 @@ function buildAction(name)
     local selection = GetSelectedUnits()
     if selection then
         -- If current selection is engineer or commander
-        if table.getsize(EntityCategoryFilterDown(categories.ENGINEER, selection)) > 0 then
+        if table.getsize(EntityCategoryFilterDown(categories.ENGINEER - categories.STRUCTURE, selection)) > 0 then
             buildActionBuilding(name, modifier)
         else -- Buildqueue or normal applying all the command
             buildActionUnit(name, modifier)
@@ -205,7 +206,8 @@ function buildActionBuilding(name, modifier)
     -- Filter the values
     local selection = GetSelectedUnits()
     local availableOrders, availableToggles, buildableCategories = GetUnitCommandData(selection)
-    local buildable = EntityCategoryGetUnitList(buildableCategories)
+    local newBuildableCategories = ModifyBuildables(buildableCategories, selection)
+    local buildable = EntityCategoryGetUnitList(newBuildableCategories)
     for _, value in allValues do
         for i, buildableValue in buildable do
             if value == buildableValue then
@@ -245,10 +247,11 @@ function buildActionBuilding(name, modifier)
         cycleMap:Show()
         -- Start the fading thread
         cycleThread = ForkThread(function()
-        local stayTime = options.hotbuild_cycle_reset_time / 2000.0
-        local fadeTime = options.hotbuild_cycle_reset_time / 2000.0
-        WaitSeconds(stayTime)
-            if (not cycleMap:IsHidden()) then
+            local stayTime = options.hotbuild_cycle_reset_time / 2000.0
+            local fadeTime = options.hotbuild_cycle_reset_time / 2000.0
+
+            WaitSeconds(stayTime)
+            if not cycleMap:IsHidden() then
                 Effect.FadeOut(cycleMap, fadeTime, 0.6, 0.1)
             end
             WaitSeconds(fadeTime)
@@ -256,7 +259,7 @@ function buildActionBuilding(name, modifier)
         end)
     else
         cycleThread = ForkThread(function()
-        WaitSeconds(options.hotbuild_cycle_reset_time / 1000.0)
+            WaitSeconds(options.hotbuild_cycle_reset_time / 1000.0)
             cyclePos = 0
         end)
     end
@@ -378,10 +381,10 @@ function buildActionTemplate(modifier)
         cycleMap:Show()
         -- Start the fading thread
         cycleThread = ForkThread(function()
-        local stayTime = options.hotbuild_cycle_reset_time / 2000.0
-        local fadeTime = options.hotbuild_cycle_reset_time / 2000.0
-        WaitSeconds(stayTime)
-        if not cycleMap:IsHidden() then
+            local stayTime = options.hotbuild_cycle_reset_time / 2000.0
+            local fadeTime = options.hotbuild_cycle_reset_time / 2000.0
+            WaitSeconds(stayTime)
+            if not cycleMap:IsHidden() then
                 Effect.FadeOut(cycleMap, fadeTime, 0.6, 0.1)
             end
             WaitSeconds(fadeTime)
@@ -389,7 +392,7 @@ function buildActionTemplate(modifier)
         end)
     else
         cycleThread = ForkThread(function()
-        WaitSeconds(options.hotbuild_cycle_reset_time / 1000.0)
+            WaitSeconds(options.hotbuild_cycle_reset_time / 1000.0)
             cyclePos = 0
         end)
     end
@@ -410,6 +413,8 @@ function buildActionTemplate(modifier)
                 if event.Modifiers.Middle then
                     ClearBuildTemplates()
                     local tempTemplate = table.deepcopy(template.templateData)
+                    template.templateData[1] = tempTemplate[2]
+                    template.templateData[2] = tempTemplate[1]
                     for i = 3, table.getn(template.templateData) do
                         local index = i
                         template.templateData[index][3] = 0 - tempTemplate[index][4]
@@ -453,8 +458,8 @@ function buildActionUnit(name, modifier)
     end
 
     for i, v in values do
-        if v == '_upgrade' then
-            return buildActionUpgrade()
+        if v == '_upgrade' and buildActionUpgrade() then
+            return
         end
     end
     local count = 1
@@ -479,24 +484,32 @@ end
 function buildActionUpgrade()
     local selectedUnits = GetSelectedUnits()
     local availableOrders, availableToggles, buildableCategories = GetUnitCommandData(selectedUnits)
-    local bpTypes = {}
+    local result = true
 
     for index, unit in selectedUnits do
-        local bpId = unit:GetBlueprint().BlueprintId
-        local cmd = upgradeTab[bpId]
+        local bp = unit:GetBlueprint()
+        local cmd = upgradeTab[bp.BlueprintId] or bp.General.UpgradesTo
+
         SelectUnits({unit})
+        local success = false
         if type(cmd) == "table" then -- Issue the first upgrade command that we may build
             for k,v in cmd do
                 if EntityCategoryContains(buildableCategories, v) then
                     IssueBlueprintCommand("UNITCOMMAND_Upgrade", v, 1, false)
+                    success = true
                     break
                 end
             end
         elseif type(cmd) == "string" then -- Direct upgrade path
             if EntityCategoryContains(buildableCategories, cmd) then
                 IssueBlueprintCommand("UNITCOMMAND_Upgrade", cmd, 1, false)
+                success = true
             end
+        end
+        if not success then
+            result = false
         end
     end
     SelectUnits(selectedUnits)
+    return result
 end

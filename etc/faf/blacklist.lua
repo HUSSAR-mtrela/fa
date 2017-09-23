@@ -46,6 +46,9 @@ Blacklist = {
     ['CC5A5288-18E3-11DD-BF33-005055D89593'] = INTEGRATED,
     ['e9bb4b11-2952-4b19-bf4e-11fb6e5fcbe9'] = INTEGRATED,
     ['CC5A5288-18E3-11DD-BF33-005055D89593'] = INTEGRATED,
+    ['e9bb4b11-2952-4b19-bf4e-11fe6e5fcbe9'] = INTEGRATED,
+    ['CC5A5288-18E3-11DD-BF33-005055D89593'] = INTEGRATED,
+    ['e9bb4b11-2952-4b19-bf4e-11fb6e5fcbe9'] = INTEGRATED,
 
     -- MoreUnitInfo
     ['CC51528A-1823-113D-BF33-044655D89593'] = INTEGRATED,
@@ -83,6 +86,25 @@ Blacklist = {
     -- No Mexes
     ['58a524e0-8143-479a-b38f-4e4513b84cd8'] = INTEGRATED,
 
+    -- Notify
+    ['3d098ad8-adb1-4c5d-8daa-a42418274de2'] = INTEGRATED,
+    ['aa5655fa-7ea0-4e3e-81b7-75695c2df6c9'] = INTEGRATED,
+    ['92f87e13-813c-4585-80d3-f8adbc4a00be'] = INTEGRATED,
+    ['b943ea7c-cdbd-40ef-9f9a-9d04b3cb122d'] = INTEGRATED,
+    ['65283e07-a667-4163-9b2c-cc46ad28d5e6'] = INTEGRATED,
+    ['20cc4f02-e4ec-4399-8ab8-35e7f40f1f77'] = INTEGRATED,
+    ['7e6da3ed-8399-45ea-b50a-01a2e5f7483c'] = INTEGRATED,
+    ['b83ac057-cf56-40d7-b5e4-376dd45422b6'] = INTEGRATED,
+    ['96333e77-7a0c-4627-a802-d2e9692843bb'] = INTEGRATED,
+    ['4767b4d5-e74e-489a-8542-3e993dd452b3'] = INTEGRATED,
+    ['3501ac36-6f32-4299-9bdb-e323f37a55a2'] = INTEGRATED,
+    ['5218d937-4112-4e86-9f09-dd18era0629c'] = INTEGRATED,
+    ['48feb6b3-47f3-4ce7-80a4-e161ca188950'] = INTEGRATED,
+    ['5048d937-1733-4e86-9f09-dd7384a0629c'] = INTEGRATED,
+    ['5d1c89e8-3c1e-472a-8ebc-a0d0484969b5'] = INTEGRATED,
+    ['e39e4070-275e-47cb-a1cd-20872ef906ad'] = INTEGRATED,
+    ['5048d937-4872-4e86-9f09-dd1806a0629c'] = INTEGRATED,
+
  -- Upgrade --
     -- Ally overflow (old, broken versions)
     ['ecbf6277-24e3-437a-b968-AllyOverflow-v1'] = UPGRADE,
@@ -100,19 +122,8 @@ Blacklist = {
     ['ecbf6277-24e3-437a-b968-EcoManager-v5'] = UPGRADE,
     ['ecbf6277-24e3-437a-b968-EcoManager-v6'] = UPGRADE,
     ['ecbf6277-24e3-437a-b968-EcoManager-v7'] = UPGRADE,
-
-    -- Nofity (Old broken ones)
-    ['3d098ad8-adb1-4c5d-8daa-a42418274de2'] = UPGRADE,
-    ['aa5655fa-7ea0-4e3e-81b7-75695c2df6c9'] = UPGRADE,
-    ['92f87e13-813c-4585-80d3-f8adbc4a00be'] = UPGRADE,
-    ['b943ea7c-cdbd-40ef-9f9a-9d04b3cb122d'] = UPGRADE,
-    ['65283e07-a667-4163-9b2c-cc46ad28d5e6'] = UPGRADE,
-    ['20cc4f02-e4ec-4399-8ab8-35e7f40f1f77'] = UPGRADE,
-    ['7e6da3ed-8399-45ea-b50a-01a2e5f7483c'] = UPGRADE,
-    ['b83ac057-cf56-40d7-b5e4-376dd45422b6'] = UPGRADE,
-    ['96333e77-7a0c-4627-a802-d2e9692843bb'] = UPGRADE,
-    ['4767b4d5-e74e-489a-8542-3e993dd452b3'] = UPGRADE,
-    ['3501ac36-6f32-4299-9bdb-e323f37a55a2'] = UPGRADE,
+    ['ecbf6277-24e3-597a-b968-EcoManager-v8'] = UPGRADE,
+    ['ecbf6277-24e3-597a-b968-EcoManager-v10'] = UPGRADE,
 
     -- Supreme economy (old ones)
     ['f8d8c95a-71e7-4978-921e-8765beb328e8'] = UPGRADE,
@@ -128,14 +139,16 @@ Blacklist = {
     ['7749EEN4-DE86-5CC2-39AC-35692BDE76XF'] = UPGRADE,
     ['1749EEN4-DE86-5CC2-39AC-35692BDE76XF'] = UPGRADE,
     ['EEFFA8C6-96D9-11E4-9DA1-460D1D5D46B0'] = UPGRADE,
-    
+
+    -- OneClickWonder
+    ['c5cc7241-d9f8-4b46-8662-ad130e426a4a'] = UPGRADE,
+
     ['12345678-3343-4bf6-9236-451244fa9999'] = BROKEN,
     ['4f8b5ac3-346c-4d25-ac34-7b8ccc14eb0a'] = OBSOLETE,
-    
+
     ['D49b27d4-7252-42b8-b39e-ac04cc195adb'] = INCOMPATIBLE,
     ['728e8d44-98e9-11e5-8994-feff819cdc9f'] = INCOMPATIBLE,
     ['55394440-5DC8-11E3-91ED-66546288709B'] = INCOMPATIBLE,
-    ['5048d937-4872-4e86-9f09-dd1806a0629c'] = INCOMPATIBLE,
     ['2bc59538-fc2c-4a18-964b-85322e9562a2'] = INCOMPATIBLE,
     ['022E3DB4-9C00-4ED7-9876-4866D316E009'] = INCOMPATIBLE,
 }

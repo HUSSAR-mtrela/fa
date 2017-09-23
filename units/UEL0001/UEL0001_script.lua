@@ -88,6 +88,7 @@ UEL0001 = Class(ACUUnit) {
                 self:RequestRefreshUI()
                 WaitFor(self.RebuildingPod)
                 self:SetWorkProgress(0.0)
+                RemoveEconomyEvent(self, self.RebuildingPod)
                 self.RebuildingPod = nil
                 local location = self:GetPosition('AttachSpecial02')
                 local pod = CreateUnitHPR('UEA0001', self:GetArmy(), location[1], location[2], location[3], 0, 0, 0)
@@ -106,6 +107,7 @@ UEL0001 = Class(ACUUnit) {
                 self:RequestRefreshUI()
                 WaitFor(self.RebuildingPod2)
                 self:SetWorkProgress(0.0)
+                RemoveEconomyEvent(self, self.RebuildingPod2)
                 self.RebuildingPod2 = nil
                 local location = self:GetPosition('AttachSpecial01')
                 local pod = CreateUnitHPR('UEA0001', self:GetArmy(), location[1], location[2], location[3], 0, 0, 0)
@@ -285,12 +287,12 @@ UEL0001 = Class(ACUUnit) {
             self:AddBuildRestriction(categories.UEF * (categories.BUILTBYTIER2COMMANDER + categories.BUILTBYTIER3COMMANDER))
             -- Engymod addition: After fiddling with build restrictions, update engymod build restrictions
             self:updateBuildRestrictions()
-        elseif enh =='DamageStablization' then
-            if not Buffs['UEFACUDamageStablization'] then
+        elseif enh =='DamageStabilization' then
+            if not Buffs['UEFACUDamageStabilization'] then
                 BuffBlueprint {
-                    Name = 'UEFACUDamageStablization',
-                    DisplayName = 'UEFACUDamageStablization',
-                    BuffType = 'DamageStablization',
+                    Name = 'UEFACUDamageStabilization',
+                    DisplayName = 'UEFACUDamageStabilization',
+                    BuffType = 'DamageStabilization',
                     Stacks = 'REPLACE',
                     Duration = -1,
                     Affects = {
@@ -305,10 +307,10 @@ UEL0001 = Class(ACUUnit) {
                     },
                 }
             end
-            Buff.ApplyBuff(self, 'UEFACUDamageStablization')
-        elseif enh =='DamageStablizationRemove' then
-            if Buff.HasBuff(self, 'UEFACUDamageStablization') then
-                Buff.RemoveBuff(self, 'UEFACUDamageStablization')
+            Buff.ApplyBuff(self, 'UEFACUDamageStabilization')
+        elseif enh =='DamageStabilizationRemove' then
+            if Buff.HasBuff(self, 'UEFACUDamageStabilization') then
+                Buff.RemoveBuff(self, 'UEFACUDamageStabilization')
             end
         elseif enh =='HeavyAntiMatterCannon' then
             local wep = self:GetWeaponByLabel('RightZephyr')

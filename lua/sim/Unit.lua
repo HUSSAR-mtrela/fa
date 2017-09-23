@@ -222,6 +222,11 @@ Unit = Class(moho.unit_methods) {
 
         local bp = self:GetBlueprint()
 
+        -- Save common lookup info
+        self.techCategory = bp.TechCategory
+        self.layerCategory = bp.LayerCategory
+        self.factionCategory = bp.FactionCategory
+
         -- Define Economic modifications
         local bpEcon = bp.Economy
         self:SetConsumptionPerSecondEnergy(bpEcon.MaintenanceConsumptionPerSecondEnergy or 0)
@@ -897,6 +902,7 @@ Unit = Class(moho.unit_methods) {
     end,
 
     OnGiven = function(self, newUnit)
+        newUnit:SendNotifyMessage('transferred')
         self:DoUnitCallbacks('OnGiven', newUnit)
     end,
 
@@ -1462,6 +1468,9 @@ Unit = Class(moho.unit_methods) {
         energy = energy * overkillMultiplier * self:GetFractionComplete()
         time = time * overkillMultiplier
 
+        -- Now we adjust the global multiplier. This is used for balance purposes to adjust global reclaim rate.
+        local time  = time * 2
+
         local prop = Wreckage.CreateWreckage(bp, pos, self:GetOrientation(), mass, energy, time)
 
         -- Attempt to copy our animation pose to the prop. Only works if
@@ -1648,7 +1657,11 @@ Unit = Class(moho.unit_methods) {
 
             if isNaval and self:GetBlueprint().Display.AnimationDeath then
                 -- Waits for wreck to hit bottom or end of animation
-                self:SeabedWatcher()
+                if self:GetFractionComplete() > 0.5 then
+                    self:SeabedWatcher()
+                else
+                    self:DestroyUnit(overkillRatio)
+                end
             else
                 -- A non-naval unit or boat with no sinking animation dying over water needs to sink, but lacks an animation for it. Let's make one up.
                 local this = self
@@ -1717,6 +1730,10 @@ Unit = Class(moho.unit_methods) {
 
     OnDestroy = function(self)
         self.Dead = true
+
+        if self:GetFractionComplete() < 1 then
+            self:SendNotifyMessage('cancelled')
+        end
 
         -- Clear out our sync data
         UnitData[self:GetEntityId()] = false
@@ -1880,6 +1897,8 @@ Unit = Class(moho.unit_methods) {
         end
 
         self.originalBuilder = builder
+
+        self:SendNotifyMessage('started')
     end,
 
     UnitBuiltPercentageCallbackThread = function(self, percent, callback)
@@ -1998,6 +2017,11 @@ Unit = Class(moho.unit_methods) {
 
         if bp.EnhancementPresetAssigned then
             self:ForkThread(self.CreatePresetEnhancementsThread)
+        end
+
+        -- Don't try sending a Notify message from here if we're an ACU
+        if self.techCategory ~= 'COMMAND' then
+            self:SendNotifyMessage('completed')
         end
 
         return true
@@ -2376,6 +2400,10 @@ Unit = Class(moho.unit_methods) {
         local function DisableOneIntel(disabler, intel)
             local intDisabled = false
             if Set.Empty(self.IntelDisables[intel]) then
+                local active = self:GetBlueprint().Intel.ActiveIntel
+                if active and active[intel] then
+                    return
+                end
                 self:DisableIntel(intel)
 
                 -- Handle the cloak FX timing
@@ -2819,6 +2847,14 @@ Unit = Class(moho.unit_methods) {
         -- Trigger the re-worded stuff that used to be inherited, no longer because of the engine bug above.
         if self.LayerChangeTrigger then
             self:LayerChangeTrigger(new, old)
+        end
+        
+        if new == 'Seabed' then
+            if not self:GetBlueprint().Intel.OmniRadius or self:GetBlueprint().Intel.OmniRadius == 0 then
+                self:DisableIntel('Vision')
+            end
+        else
+            self:EnableIntel('Vision')
         end
     end,
 
@@ -3725,11 +3761,7 @@ Unit = Class(moho.unit_methods) {
         self.VeteranLevel = level
 
         -- Apply default veterancy buffs
-        local buffTypes = {'Regen', 'Health'}
-        local notUsingMaxHealth = self:GetBlueprint().MaxHealthNotAffectHealth
-        if notUsingMaxHealth then
-            buffTypes = {'Regen', 'MaxHealth'}
-        end
+        local buffTypes = {'Regen', 'MaxHealth'}
 
         for k, bType in buffTypes do
             Buff.ApplyBuff(self, 'Veterancy' .. bType .. level)
@@ -3751,7 +3783,18 @@ Unit = Class(moho.unit_methods) {
             end
         end
         self:GetAIBrain():OnBrainUnitVeterancyLevel(self, level)
+        self:DoVeterancyHealing(level)
+
         self:DoUnitCallbacks('OnVeteran')
+    end,
+
+    -- Veterancy can't be 'Undone', so we heal the unit directly, one-off, rather than using a buff. Much more flexible.
+    DoVeterancyHealing = function(self, level)
+        local bp = self:GetBlueprint()
+        local maxHealth = bp.Defense.MaxHealth
+        local mult = bp.VeteranHealingMult[level] or 0.1
+
+        self:AdjustHealth(self, maxHealth * mult)
     end,
 
     -- Table housing data on what to use to generate buffs for a unit
@@ -4186,6 +4229,53 @@ Unit = Class(moho.unit_methods) {
         self:EnableDefaultToggleCaps()
         self:TransportAnimation(-1)
         self:DoUnitCallbacks('OnDetachedFromTransport', transport, bone)
+    end,
+
+    -- Utility Functions
+    SendNotifyMessage = function(self, trigger, source)
+        local focusArmy = GetFocusArmy()
+        local army = self:GetArmy()
+        if focusArmy == -1 or focusArmy == army then
+            local id
+            local unitType
+            local category
+
+            if not source then
+                local bp = self:GetBlueprint()
+                if bp.CategoriesHash.RESEARCH then
+                    unitType = string.lower('research' .. self.layerCategory .. self.techCategory)
+                    category = 'tech'
+                elseif EntityCategoryContains(categories.NUKE * categories.STRUCTURE - categories.EXPERIMENTAL, self) then -- Ensure to exclude Yolona Oss, which gets its own message
+                    unitType = 'nuke'
+                    category = 'other'
+                elseif EntityCategoryContains(categories.TECH3 * categories.STRUCTURE * categories.ARTILLERY, self) then
+                    unitType = 'arty'
+                    category = 'other'
+                elseif self.techCategory == 'EXPERIMENTAL' then
+                    unitType = bp.BlueprintId
+                    category = 'experimentals'
+                else
+                    return
+                end
+            else -- We are being called from the Enhancements chain (ACUs)
+                id = self:GetEntityId()
+                category = string.lower(self.factionCategory)
+            end
+
+            if trigger == 'transferred' then
+                if not Sync.EnhanceMessage then return end
+                for index, msg in Sync.EnhanceMessage do
+                    if msg.source == (source or unitType) and msg.trigger == 'completed' and msg.category == category and msg.id == id then
+                        table.remove(Sync.EnhanceMessage, index)
+                        break
+                    end
+                end
+            else
+                if not Sync.EnhanceMessage then Sync.EnhanceMessage = {} end
+                local message = {source = source or unitType, trigger = trigger, category = category, id = id, army = army}
+                table.insert(Sync.EnhanceMessage, message)
+            end
+        end
     end,
 
     --- Deprecated functionality

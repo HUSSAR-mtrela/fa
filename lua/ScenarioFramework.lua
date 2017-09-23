@@ -249,6 +249,12 @@ function CreateUnitDestroyedTrigger(cb, unit)
     CreateUnitDeathTrigger(cb, unit, true)
 end
 
+-- Single Line unit given trigger creation
+-- When <unit> is given it will call the <cb> function provided
+function CreateUnitGivenTrigger(cb, unit)
+    TriggerFile.CreateUnitGivenTrigger(cb, unit)
+end
+
 -- Single Line Unit built trigger
 -- Tests when <unit> builds a unit of type <category> calls <cb>
 function CreateUnitBuiltTrigger(cb, unit, category)
@@ -1186,6 +1192,7 @@ function SetPlayableArea(rect, voFlag)
     end
 
     import('/lua/SimSync.lua').SyncPlayableRect(rect)
+    Sync.NewPlayableArea = {x0, y0, x1, y1}
     ForkThread(GenerateOffMapAreas)
 end
 

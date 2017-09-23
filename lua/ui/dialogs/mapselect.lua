@@ -238,7 +238,22 @@ mapFilters = {
         FilterFactory = {
             SelectedKey = 1,
             Filters = {
-                function(scenInfo) return not scenInfo.Outdated end
+                function(scenInfo)
+                    if scenInfo.Outdated then
+                        return false
+                    end
+                    local version = scenInfo.map_version or 0
+                    for _,comparisionlist in scenarios do
+                        if scenInfo.name == comparisionlist.name then
+                            if comparisionlist.map_version then
+                                if version < comparisionlist.map_version then
+                                    return false
+                                end
+                            end
+                        end
+                    end
+                    return true
+                end
             },
             Build = function(self)
                 return self.Filters[self.SelectedKey]
@@ -263,6 +278,9 @@ function InitFilters()
         map_obsolete = {
             SelectedKey = 1 -- Enable obsolete map filtering by default.
         }
+    }
+    savedFilterState['map_obsolete'] = {
+        SelectedKey = 1 -- Enable obsolete map filtering by default.
     }
 
     -- savedFilterState is an array of tables of filter options
@@ -653,6 +671,9 @@ function CreateDialog(selectBehavior, exitBehavior, over, singlePlayer, defaultS
     SetupOptionsPanel(OptionGroup, curOptions)
 
     selectButton.OnClick = function(self, modifiers)
+        if mapIsOutdated() then
+            GUI_OldMap(over)
+        end
         selectBehavior(selectedScenario, changedOptions, restrictedCategories)
         ResetFilters()
     end
@@ -665,6 +686,9 @@ function CreateDialog(selectBehavior, exitBehavior, over, singlePlayer, defaultS
     mapList.OnKeySelect = OnMapChanged
     mapList.OnClick = OnMapChanged
     mapList.OnDoubleClick = function(self, row)
+        if mapIsOutdated() then
+            GUI_OldMap(over)
+        end
         mapList:SetSelection(row)
         PreloadMap(row)
         local scen = scenarios[scenarioKeymap[row+1]]
@@ -678,6 +702,7 @@ function CreateDialog(selectBehavior, exitBehavior, over, singlePlayer, defaultS
 
     return popup
 end
+
 
 function RefreshOptions(skipRefresh)
     -- a little weird, but the "skip refresh" is set to prevent calc visible from being called before the control is properly setup
@@ -1046,4 +1071,37 @@ function PopulateMapList()
         mapList:OnClick(reselectRow -1, true)
         mapList:ShowItem(reselectRow -1)
     end
+end
+
+function GUI_OldMap(over)
+    local GUI = UIUtil.CreateScreenGroup(over, "CreateMapPopup ScreenGroup")
+    local dialogContent = Group(GUI)
+    dialogContent.Width:Set(1000)
+    dialogContent.Height:Set(100)
+
+    local Changelog = import('/lua/ui/lobby/changelog.lua')
+    local OldMapPopup = Popup(GUI, dialogContent)
+    OldMapPopup.OnClosed = function()
+        Prefs.SetToCurrentProfile('LobbyChangelog', Changelog.last_version)
+    end
+
+    -- Title --
+    local text0 = UIUtil.CreateText(dialogContent, LOC("<LOC lobui_0773>The currently selected map is outdated and/or unbalanced. Please download the latest version from the map vault."), 17, 'Arial Gras', true)
+    LayoutHelpers.AtHorizontalCenterIn(text0, dialogContent, 0)
+    LayoutHelpers.AtTopIn(text0, dialogContent, 10)
+
+    -- OK button --
+    local OkButton = UIUtil.CreateButtonWithDropshadow(dialogContent, '/BUTTON/medium/', "Ok")
+    LayoutHelpers.AtCenterIn(OkButton, dialogContent, 20)
+    LayoutHelpers.AtBottomIn(OkButton, dialogContent, 10)
+    OkButton.OnClick = function()
+        OldMapPopup:Close()
+    end
+end
+
+function mapIsOutdated()
+    local obsoleteFilterFactory = mapFilters[GetFilterIndex('map_obsolete')].FilterFactory
+    obsoleteFilterFactory.SelectedKey = 1
+    local obsoleteFilter = obsoleteFilterFactory:Build()
+    return not obsoleteFilter(selectedScenario)
 end

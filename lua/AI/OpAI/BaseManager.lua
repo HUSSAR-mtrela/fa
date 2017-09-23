@@ -127,11 +127,11 @@ BaseManager = Class {
             Intel = true,
             LandAttacks = true,
             LandScouting = false,
-            Nukes = true,
+            Nukes = false,
             Patrolling = true,
             SeaAttacks = true,
             Shields = true,
-            TML = true,
+            TMLs = true,
             Torpedos = true,
             Walls = true,
 
@@ -157,7 +157,7 @@ BaseManager = Class {
             NumAssisting = 0,           -- Number of engies assisting the conditional build
             MaxAssisting = 1,           -- Maximum units to assist the current conditional build
             Unit = false,            -- The actual unit being constructed currently
-            MainBuilder = false;     -- False if there is currently not a main conditional builder, else the unit building
+            MainBuilder = false,     -- False if there is currently not a main conditional builder, else the unit building
             Index = 0,               -- Stores the index of the current conditional being built
             WaitSecondsAfterDeath = false, -- Time to wait after conditional build's death before starting a new one.
 
@@ -184,11 +184,11 @@ BaseManager = Class {
     -- Level Table format
     -- {
     --     GroupName = Priority, -- Name not in quotes
-    --}
+    -- }
     Initialize = function(self, brain, baseName, markerName, radius, levelTable, diffultySeparate)
         self.Active = true
         if self.Initialized then
-            error('*AI ERROR: BaseManager named "'..baseName..'" has already been initialized', 2)
+            error('*AI ERROR: BaseManager named "' .. baseName .. '" has already been initialized', 2)
         end
 
         self.Initialized = true
@@ -215,12 +215,22 @@ BaseManager = Class {
         self:LoadDefaultBaseSupportCDRs() -- sACU things
         self:LoadDefaultBaseEngineers() -- All other Engs
         self:LoadDefaultScoutingPlatoons() -- Load in default scouts
+        self:LoadDefaultBaseTMLs() -- TMLs
+        self:LoadDefaultBaseNukes() -- Nukes
         self:SortGroupNames() -- Force sort since no sorting when adding groups earlier
         self:ForkThread(self.UpgradeCheckThread) -- Start the thread to see if any buildings need upgrades
 
-        -- Check for a default patrol chain for engineers
+        -- Check for a default chains for engineers' patrol and scouting
         if Scenario.Chains[baseName..'_EngineerChain'] then
             self:SetDefaultEngineerPatrolChain(baseName..'_EngineerChain')
+        end
+
+        if Scenario.Chains[baseName..'_AirScoutChain'] then
+            self:SetDefaultAirScoutPatrolChain(baseName..'_AirScoutChain')
+        end
+
+        if Scenario.Chains[baseName..'_LandScoutChain'] then
+            self:SetDefaultLandScoutPatrolChain(baseName..'_LandScoutChain')
         end
     end,
 
@@ -506,7 +516,7 @@ BaseManager = Class {
     end,
 
     NeedPermanentFactoryAssist = function(self)
-        if self:GetPermanentAssistCount() > self:GetNumPermanentAssisting() then
+        if table.getn(self:GetAllBaseFactories()) >= 1 and self:GetPermanentAssistCount() > self:GetNumPermanentAssisting() then
             return true
         end
         return false
@@ -897,7 +907,8 @@ BaseManager = Class {
                 for k, v in self.UpgradeTable do
                     local unit = ScenarioInfo.UnitNames[armyIndex][v.UnitName]
                     if unit and not unit:IsDead() then
-                        if not EntityCategoryContains(ParseEntityCategory(v.FinalUnit), unit) and unit:IsIdleState() and not unit:IsBeingBuilt() then
+                        -- Cybran engie stations are never in 'Idle' state but in 'AssistingCommander' state 
+                        if not EntityCategoryContains(ParseEntityCategory(v.FinalUnit), unit) and (unit:IsIdleState() or unit:IsUnitState('AssistingCommander')) and not unit:IsBeingBuilt() then
                             self:ForkThread(self.BaseManagerUpgrade, unit, v.UnitName)
                         end
                     end
@@ -1236,6 +1247,11 @@ BaseManager = Class {
         end,
 
         TMLActive = function(self, val)
+            self.FunctionalityStates.TMLs = val
+        end,
+
+        NukeActive = function(self, val)
+            self.FunctionalityStates.Nukes = val
         end,
 
         PatrolActive = function(self, val)
@@ -1253,7 +1269,7 @@ BaseManager = Class {
         AirScoutingActive = function(self, val)
             self.FunctionalityStates.AirScouting = val
         end,
-   },
+    },
 
     -- Enable/Disable building of buildings and stuff
     SetBuild = function(self, buildType, val)
@@ -1425,7 +1441,7 @@ BaseManager = Class {
             self.BuildTable['MassStorage'] = val
             self.BuildTable['EnergyStorage'] = val
         end,
-   },
+    },
 
     -------------------------------------
     -- Default builders for base managers
@@ -1496,10 +1512,10 @@ BaseManager = Class {
             RequiresConstruction = false,
             LocationType = self.BaseName,
             PlatoonAddFunctions = {
-                {'/lua/ai/opai/OpBehaviors.lua', 'CDROverchargeBehavior'},
+                -- {'/lua/ai/opai/OpBehaviors.lua', 'CDROverchargeBehavior'}, -- TODO: Re-add once it doesnt interfere with BM engineer thread
                 {BMPT, 'UnitUpgradeBehavior'},
             },
-            PlatoonAIFunction = {'/lua/ai/opai/BaseManagerPlatoonThreads.lua', 'BaseManagerEngineerPlatoonSplit'},
+            PlatoonAIFunction = {'/lua/ai/opai/BaseManagerPlatoonThreads.lua', 'BaseManagerSingleEngineerPlatoon'},
             BuildConditions = {
                 {BMBC, 'BaseActive', {self.BaseName}},
             },
@@ -1522,7 +1538,7 @@ BaseManager = Class {
             PlatoonAddFunctions = {
                 {BMPT, 'UnitUpgradeBehavior'},
             },
-            PlatoonAIFunction = {'/lua/ai/opai/BaseManagerPlatoonThreads.lua', 'BaseManagerEngineerPlatoonSplit'},
+            PlatoonAIFunction = {'/lua/ai/opai/BaseManagerPlatoonThreads.lua', 'BaseManagerSingleEngineerPlatoon'},
             BuildConditions = {
                 {BMBC, 'BaseActive', {self.BaseName}},
             },
@@ -1635,6 +1651,70 @@ BaseManager = Class {
             InstanceCount = 1,
         }
         self.AIBrain:PBMAddPlatoon(defaultBuilder)
+    end,
+
+    LoadDefaultBaseTMLs = function(self)
+        local defaultBuilder = {
+            BuilderName = 'BaseManager_TMLPlatoon_' .. self.BaseName,
+            PlatoonTemplate = self:CreateTMLPlatoonTemplate(),
+            Priority = 300,
+            PlatoonType = 'Any',
+            RequiresConstruction = false,
+            LocationType = self.BaseName,
+            PlatoonAIFunction = {'/lua/ai/opai/BaseManagerPlatoonThreads.lua', 'BaseManagerTMLAI'},
+            BuildConditions = {
+                {BMBC, 'BaseActive', {self.BaseName}},
+                {BMBC, 'TMLsEnabled', {self.BaseName}},
+            },
+            PlatoonData = {
+                BaseName = self.BaseName,
+            },
+        }
+        self.AIBrain:PBMAddPlatoon(defaultBuilder)
+    end,
+
+    LoadDefaultBaseNukes = function(self)
+        local defaultBuilder = {
+            BuilderName = 'BaseManager_NukePlatoon_' .. self.BaseName,
+            PlatoonTemplate = self:CreateNukePlatoonTemplate(),
+            Priority = 400,
+            PlatoonType = 'Any',
+            RequiresConstruction = false,
+            LocationType = self.BaseName,
+            PlatoonAIFunction = {'/lua/ai/opai/BaseManagerPlatoonThreads.lua', 'BaseManagerNukeAI'},
+            BuildConditions = {
+                {BMBC, 'BaseActive', {self.BaseName}},
+                {BMBC, 'NukesEnabled', {self.BaseName}},
+            },
+            PlatoonData = {
+                BaseName = self.BaseName,
+            },
+        }
+        self.AIBrain:PBMAddPlatoon(defaultBuilder)
+    end,
+
+    CreateTMLPlatoonTemplate = function(self)
+        local faction = self.AIBrain:GetFactionIndex()
+        local template = {
+            'TMLTemplate',
+            'NoPlan',
+            {'ueb2108', 1, 1, 'Attack', 'None'},
+        }
+        template = ScenarioUtils.FactionConvert(template, faction)
+
+        return template
+    end,
+
+    CreateNukePlatoonTemplate = function(self)
+        local faction = self.AIBrain:GetFactionIndex()
+        local template = {
+            'NukeTemplate',
+            'NoPlan',
+            {'ueb2305', 1, 1, 'Attack', 'None'},
+        }
+        template = ScenarioUtils.FactionConvert(template, faction)
+
+        return template
     end,
 
     CreateLandScoutPlatoon = function(self)

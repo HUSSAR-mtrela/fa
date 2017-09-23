@@ -31,6 +31,40 @@ end
 -- Set up the sync table and some globals for use by scenario functions
 doscript '/lua/SimSync.lua'
 
+local syncStartPositions = false -- This is held here because the Sync table is cleared between SetupSession() and BeginSession()
+
+function ShuffleStartPositions(syncNewPositions)
+    local markers = ScenarioInfo.Env.Scenario.MasterChain._MASTERCHAIN_.Markers
+    local positionGroups = ScenarioInfo.Options.RandomPositionGroups
+    local positions = {}
+    if not positionGroups then
+        return
+    end
+
+    for _, group in positionGroups do
+        for _, num in group do
+            local name = 'ARMY_' .. num
+            local marker = markers[name]
+            if marker and marker.position then
+                positions[num] = {pos = marker.position, name = name}
+            end
+        end
+
+        local shuffledGroup = table.shuffle(group)
+        for i = 1, table.getn(group) do
+            local pos = positions[shuffledGroup[i]].pos
+            local name = positions[group[i]].name
+            if pos and markers[name] then
+                markers[name].position = pos
+
+                if syncNewPositions then
+                    syncStartPositions[name] = pos
+                end
+            end
+        end
+    end
+end
+
 --SetupSession will be called by the engine after ScenarioInfo is set
 --but before any armies are created.
 function SetupSession()
@@ -56,6 +90,22 @@ function SetupSession()
     -- are loaded into. We set it up here with some default functions that can be accessed
     -- from the scenario script.
     ScenarioInfo.Env = import('/lua/scenarioEnvironment.lua')
+
+    --Check if ShareOption is valid, and if not then set it to ShareUntilDeath
+    local shareOption = ScenarioInfo.Options.Share
+    local globalOptions = import('/lua/ui/lobby/lobbyOptions.lua').globalOpts
+    local shareOptions = {}
+    for _,globalOption in globalOptions do
+        if globalOption.key == 'Share' then
+            for _,value in globalOption.values do
+                shareOptions[value.key] = true
+            end
+            break
+        end
+    end
+    if not shareOptions[shareOption] then
+        ScenarioInfo.Options.Share = 'ShareUntilDeath'
+    end
 
     -- if build/enhancement restrictions chosen, set them up
     local buildRestrictions, enhRestrictions = nil, {}
@@ -120,7 +170,17 @@ function SetupSession()
 
     Scenario = ScenarioInfo.Env.Scenario
 
-    LOG('Loading script file: ',ScenarioInfo.script)
+    local spawn = ScenarioInfo.Options.TeamSpawn
+    if spawn and table.find({'random_reveal', 'balanced_reveal', 'balanced_flex_reveal'}, spawn) then
+        -- Shuffles positions like normal but syncs the new positions to the UI
+        syncStartPositions = {}
+        ShuffleStartPositions(true)
+    elseif spawn and table.find({'random', 'balanced', 'balanced_flex'}, spawn) then
+        -- Prevents players from knowing start positions at start
+        ShuffleStartPositions(false)
+    end
+
+    LOG('Loading script file: ', ScenarioInfo.script)
     doscript(ScenarioInfo.script, ScenarioInfo.Env)
 
     ResetSyncTable()
@@ -159,6 +219,7 @@ end
 -- the initial units and any other gameplay state we need.
 function BeginSession()
     LOG('BeginSession...')
+    ForkThread(GameTimeLogger)
     local focusarmy = GetFocusArmy()
     if focusarmy>=0 and ArmyBrains[focusarmy] then
         LocGlobals.PlayerName = ArmyBrains[focusarmy].Nickname
@@ -219,6 +280,19 @@ function BeginSession()
 
     --for off-map prevention
     OnStartOffMapPreventionThread()
+
+    if syncStartPositions then
+        Sync.StartPositions = syncStartPositions
+    end
+end
+
+function GameTimeLogger()
+    local time
+    while true do
+        time = GetGameTimeSeconds()
+        SPEW(string.format('Current gametime: %02d:%02d:%02d', math.floor(time/3600), math.floor(time/60), math.mod(time, 60)))
+        WaitSeconds(30)
+    end
 end
 
 -- forks a thread that performs off-map prevention

@@ -588,8 +588,9 @@ function SplitPatrolThread(platoon)
     platoon:Stop()
     if data then
         if data.PatrolChains then
+            local num = table.getn(data.PatrolChains)
             for _, v in platoon:GetPlatoonUnits() do
-                local chain = Random(1, table.getn(data.PatrolChains))
+                local chain = Random(1, num)
                 ScenarioFramework.GroupPatrolChain({v}, data.PatrolChains[chain])
             end
         else
@@ -1247,7 +1248,6 @@ function StartBaseConstruction(eng, engTable, data, aiBrain)
                 v = string.gsub(v, '2', '1')
                 v = string.gsub(v, '3', '1')
             end
-            platoon:Stop()
             EngineerBuildStructure(aiBrain, eng, v, baseTmpl, buildingTmpl)
             if eng.UnitBeingBuilt then
                 unitBeingBuilt = eng.UnitBeingBuilt

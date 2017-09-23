@@ -86,8 +86,9 @@ end
 
 local statFuncs = {
     function(info)
-        if info.massProduced > 0 or info.massRequested > 0 then
-            return string.format('%+d', math.ceil(info.massProduced - info.massRequested)), UIUtil.UIFile('/game/unit_view_icons/mass.dds'), '00000000'
+        local massUsed = math.max(info.massRequested, info.massConsumed)
+        if info.massProduced > 0 or massUsed > 0 then
+            return string.format('%+d', math.ceil(info.massProduced - massUsed)), UIUtil.UIFile('/game/unit_view_icons/mass.dds'), '00000000'
         elseif info.armyIndex + 1 ~= GetFocusArmy() and info.kills == 0 and info.shieldRatio <= 0 then
             local armyData = GetArmiesTable().armiesTable[info.armyIndex+1]
             local icon = Factions.Factions[armyData.faction+1].Icon
@@ -101,8 +102,9 @@ local statFuncs = {
         end
     end,
     function(info)
-        if info.energyProduced > 0 or info.energyRequested > 0 then
-            return string.format('%+d', math.ceil(info.energyProduced - info.energyRequested))
+        local energyUsed = math.max(info.energyRequested, info.energyConsumed)
+        if info.energyProduced > 0 or energyUsed > 0 then
+            return string.format('%+d', math.ceil(info.energyProduced - energyUsed))
         else
             return false
         end
@@ -445,6 +447,36 @@ function UpdateWindow(info)
             end
         end
     end
+
+    UpdateEnhancementIcons(info)
+end
+
+local GetEnhancementPrefix = import('/lua/ui/game/construction.lua').GetEnhancementPrefix
+function UpdateEnhancementIcons(info)
+    local unit = info.userUnit
+    local existingEnhancements
+    if unit then
+        existingEnhancements = EnhancementCommon.GetEnhancements(unit:GetEntityId())
+    end
+
+    for slot, enhancement in controls.enhancements do
+        if unit == nil or
+                (not unit:IsInCategory('COMMAND') and not unit:IsInCategory('SUBCOMMANDER')) or
+                existingEnhancements == nil or existingEnhancements[slot] == nil then
+            enhancement:Hide()
+            continue
+        end
+
+        local bp = unit:GetBlueprint()
+        local bpId = bp.BlueprintId
+        local enhancementBp = bp.Enhancements[existingEnhancements[slot]]
+        local texture = GetEnhancementPrefix(bpId, enhancementBp.Icon) .. '_btn_up.dds'
+
+        enhancement:Show()
+        enhancement:SetTexture(UIUtil.UIFile(texture))
+        enhancement.Width:Set(30)
+        enhancement.Height:Set(30)
+    end
 end
 
 function ShowROBox()
@@ -516,6 +548,16 @@ function CreateUI()
             self:SetAlpha(0, true)
         end
     end
+
+    -- This section is for the small icons showing what active enhancements an ACU has
+	controls.enhancements = {}
+	controls.enhancements['RCH'] = Bitmap(controls.bg)
+	controls.enhancements['Back'] = Bitmap(controls.bg)
+	controls.enhancements['LCH'] = Bitmap(controls.bg)
+
+	LayoutHelpers.AtLeftTopIn(controls.enhancements['RCH'], controls.bg, 10, -30)
+	LayoutHelpers.AtLeftTopIn(controls.enhancements['Back'], controls.bg, 42, -30)
+	LayoutHelpers.AtLeftTopIn(controls.enhancements['LCH'], controls.bg, 74, -30)
 end
 
 function OnSelection(units)

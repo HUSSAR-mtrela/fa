@@ -36,6 +36,12 @@ local sendChat = import('/lua/ui/game/chat.lua').ReceiveChatFromSim
 local oldData = {}
 local lastObserving
 
+local ignoreSelection = false
+function SetIgnoreSelection(ignore)
+    ignoreSelection = ignore
+    import('/lua/ui/game/commandmode.lua').SetIgnoreSelection(ignore)
+end
+
 -- generating hotbuild modifier shortcuts on the fly
 modifiersKeys = import('/lua/keymap/keymapper.lua').GenerateHotbuildModifiers()
 IN_AddKeyMapTable(modifiersKeys)
@@ -126,6 +132,7 @@ function OnFirstUpdate()
             end
         end
     end
+    UIUtil.UpdateCurrentSkin()
 end
 
 function CreateUI(isReplay)
@@ -239,6 +246,8 @@ function CreateUI(isReplay)
 
     local hotkeyLabelsInit = import('/lua/keymap/hotkeylabels.lua').init
     hotkeyLabelsInit()
+
+    import('/lua/ui/notify/customiser.lua').init(isReplay, import('/lua/ui/game/borders.lua').GetMapGroup())
 end
 
 -- Current SC_FrameTimeClamp settings allows up to 100 fps as default (some users probably set this to 0 to "increase fps" which would be counter-productive)
@@ -280,21 +289,22 @@ local function LoadDialog(parent)
     local text = '::  ' .. LOC('<LOC LOAD_0000>IN TRANSIT') .. '  ::'
     local textControl = UIUtil.CreateText(movie, text, 20, UIUtil.bodyFont)
     textControl:SetColor(color)
+    textControl:SetDropShadow(true)
     LayoutHelpers.AtCenterIn(textControl, parent, 200)
     import('/lua/maui/effecthelpers.lua').Pulse(textControl, 1, 0, .8)
 
     if Prefs.GetOption('loading_tips') then
         local tipControl = UIUtil.CreateText(movie, '', 20, UIUtil.bodyFont)
         tipControl:SetColor(color)
-        LayoutHelpers.CenteredBelow(tipControl, textControl, 20)
-        import('/lua/maui/effecthelpers.lua').Pulse(tipControl, 1, 0, .8)
+        tipControl:SetDropShadow(true)
+        LayoutHelpers.CenteredBelow(tipControl, textControl, 40)
         ForkThread(
             function(control)
                 local tipsTbl = import('/lua/ui/help/loadingtips.lua').Tips
                 local tipsSize = table.getn(tipsTbl)
                 while WorldIsLoading() do
-                    local tipText = LOCF('%s: %s', '<LOC loadingtip_0000>Quick Tip', tipsTbl[Random(1, tipsSize)])
-                    control:SetText(tipText)
+                    control:SetText(LOC(tipsTbl[Random(1, tipsSize)]))
+                    control:SetDropShadow(true)
                     WaitSeconds(7)
                 end
             end,
@@ -385,6 +395,7 @@ function CreateWldUIProvider()
         local text = '::  ' .. LOC('<LOC LOAD_0000>IN TRANSIT') .. '  ::'
         local textControl = UIUtil.CreateText(background, text, 20, UIUtil.bodyFont)
         textControl:SetColor(color)
+        textControl:SetDropShadow(true)
         LayoutHelpers.AtCenterIn(textControl, GetFrame(0), 200)
         FlushEvents()
     end
@@ -469,13 +480,21 @@ end
 -- @param added: Which units were added to the old selection
 -- @param removed: Which units where removed from the old selection
 local hotkeyLabelsOnSelectionChanged = false
+local upgradeTab = false
 function OnSelectionChanged(oldSelection, newSelection, added, removed)
+    if ignoreSelection then
+        return
+    end
+
     if import('/lua/ui/game/selection.lua').IsHidden() then
         return
     end
 
     if not hotkeyLabelsOnSelectionChanged then
         hotkeyLabelsOnSelectionChanged = import('/lua/keymap/hotkeylabels.lua').onSelectionChanged
+    end
+    if not upgradeTab then
+        upgradeTab = import('/lua/keymap/upgradeTab.lua').upgradeTab
     end
 
     -- Deselect Selens if necessary. Also do work on Hotbuild labels
@@ -491,11 +510,25 @@ function OnSelectionChanged(oldSelection, newSelection, added, removed)
         end
 
         -- This bit is for the Hotbuild labels
-        local upgradesTo = newSelection[1]:GetBlueprint().General.UpgradesTo
-        if upgradesTo then
-            if upgradesTo:len(upgradesTo) < 7 then
-                upgradesTo = nil
+        local bp = newSelection[1]:GetBlueprint()
+        local upgradesTo = nil
+        local potentialUpgrades = upgradeTab[bp.BlueprintId] or bp.General.UpgradesTo
+        if potentialUpgrades then
+            if type(potentialUpgrades) == "string" then 
+                upgradesTo = potentialUpgrades
+            elseif type(potentialUpgrades) == "table" then 
+                local availableOrders, availableToggles, buildableCategories = GetUnitCommandData(newSelection)
+                for _, v in potentialUpgrades do
+                    if EntityCategoryContains(buildableCategories, v) then
+                        upgradesTo = v
+                        break
+                    end
+                end
             end
+        end
+
+        if upgradesTo and upgradesTo:len() < 7 then
+            upgradesTo = nil
         end
         local isFactory = newSelection[1]:IsInCategory("FACTORY")
         hotkeyLabelsOnSelectionChanged(upgradesTo, isFactory)

@@ -13,6 +13,8 @@ local LabelPool = {} -- Stores labels up too MaxLabels
 local OldZoom
 local OldPosition
 local ReclaimChanged = true
+local PlayableArea
+local OutsidePlayableAreaReclaim = {}
 
 -- Stores/updates a reclaim entity's data using EntityId as key
 -- called from /lua/UserSync.lua
@@ -21,10 +23,39 @@ function UpdateReclaim(syncTable)
     for id, data in syncTable do
         if not data.mass then
             Reclaim[id] = nil
+            OutsidePlayableAreaReclaim[id] = nil
         else
-            Reclaim[id] = data
+            data.inPlayableArea = InPlayableArea(data.position)
+            if data.inPlayableArea then
+                Reclaim[id] = data
+                OutsidePlayableAreaReclaim[id] = nil
+            else
+                Reclaim[id] = nil
+                OutsidePlayableAreaReclaim[id] = data
+            end
         end
     end
+end
+
+function SetPlayableArea(rect)
+    ReclaimChanged = true
+    PlayableArea = rect
+    
+    local newReclaim = {}
+    local newOutsidePlayableAreaReclaim = {}
+    local ReclaimLists = {Reclaim, OutsidePlayableAreaReclaim}
+    for _,reclaimList in ReclaimLists do 
+        for id,r in reclaimList do
+            r.inPlayableArea = InPlayableArea(r.position)
+            if r.inPlayableArea then
+                newReclaim[id] = r
+            else
+                newOutsidePlayableAreaReclaim[id] = r
+            end
+        end
+    end
+    Reclaim = newReclaim
+    OutsidePlayableAreaReclaim = newOutsidePlayableAreaReclaim
 end
 
 function updateMinAmount(value)
@@ -44,6 +75,13 @@ end
 function OnScreen(view, pos)
     local proj = view:Project(Vector(pos[1], pos[2], pos[3]))
     return not (proj.x < 0 or proj.y < 0 or proj.x > view.Width() or proj.y > view:Height())
+end
+
+function InPlayableArea(pos)
+    if PlayableArea then
+        return not (pos[1] < PlayableArea[1] or pos[3] < PlayableArea[2] or pos[1] > PlayableArea[3] or pos[3] > PlayableArea[4])
+    end
+    return true
 end
 
 local WorldLabel = Class(Group) {
@@ -144,6 +182,11 @@ function UpdateLabels()
         end
         if not LabelPool[labelIndex] then
             LabelPool[labelIndex] = CreateReclaimLabel(view.ReclaimGroup, r)
+        else
+            if IsDestroyed(r) then
+                LabelPool[labelIndex] = nil
+                continue
+            end
         end
 
         local label = LabelPool[labelIndex]
@@ -153,6 +196,10 @@ function UpdateLabels()
 
     -- Hide labels we didn't use
     for index = labelIndex, MaxLabels do
+        if IsDestroyed(LabelPool[index]) then
+            LabelPool[index] = nil
+            continue
+        end
         local label = LabelPool[index]
         if label and not label:IsHidden() then
             label:Hide()
@@ -194,22 +241,23 @@ function ShowReclaimThread(watch_key)
     InitReclaimGroup(view)
 
     while view.ShowingReclaim and (not watch_key or IsKeyDown(watch_key)) do
-        local zoom = camera:GetZoom()
-        local position = camera:GetFocusPosition()
-        if ReclaimChanged
-            or view.NewViewing
-            or OldZoom ~= zoom
-            or OldPosition[1] ~= position[1]
-            or OldPosition[2] ~= position[2]
-            or OldPosition[3] ~= position[3] then
-                UpdateLabels()
-                OldZoom = zoom
-                OldPosition = position
-                ReclaimChanged = false
+        if not IsDestroyed(camera) then
+            local zoom = camera:GetZoom()
+            local position = camera:GetFocusPosition()
+            if ReclaimChanged
+                or view.NewViewing
+                or OldZoom ~= zoom
+                or OldPosition[1] ~= position[1]
+                or OldPosition[2] ~= position[2]
+                or OldPosition[3] ~= position[3] then
+                    UpdateLabels()
+                    OldZoom = zoom
+                    OldPosition = position
+                    ReclaimChanged = false
+            end
+
+            view.NewViewing = false
         end
-
-        view.NewViewing = false
-
         WaitSeconds(.1)
     end
 

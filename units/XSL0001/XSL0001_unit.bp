@@ -417,13 +417,13 @@ UnitBlueprint {
             Slot = 'RCH',
         },
         BlastAttack = {
-            AdditionalDamage = 400,
-            BuildCostEnergy = 300000,
-            BuildCostMass = 3500,
+            AdditionalDamage = 750,
+            BuildCostEnergy = 270000,
+            BuildCostMass = 4800,
             BuildTime = 4200,
             Icon = 'cba',
             Name = '<LOC enhancements_0129>Refracting Chronotron Amplifier',
-            NewDamageRadius = 2,
+            NewDamageRadius = 2.7,
             ShowBones = {
                 'Left_Upgrade',
             },
@@ -876,6 +876,13 @@ UnitBlueprint {
         Level3 = 65,
         Level4 = 90,
         Level5 = 120,
+    },
+    VeteranHealingMult = { -- This table is used to override the vet instant heal multiplier per level
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
     },
     Weapon = {
         {

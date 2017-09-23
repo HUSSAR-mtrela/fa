@@ -433,6 +433,21 @@ options = {
                 },
             },
             {
+                title = "<LOC OPTIONS_0279>Use Factional UI Font Color",
+                key = 'faction_font_color',
+                type = 'toggle',
+                default = true,
+                set = function(key,value,startup)
+                    import('/lua/ui/uiutil.lua').UpdateCurrentSkin({faction_font_color = value})
+                end,
+                custom = {
+                    states = {
+                        {text = "<LOC _On>", key = true},
+                        {text = "<LOC _Off>", key = false},
+                    },
+                },
+            },
+            {
                 title = "<LOC OPTIONS_0226>Enable Cycle Preview for Hotbuild",
                 key = 'hotbuild_cycle_preview',
                 type = 'toggle',
@@ -707,6 +722,18 @@ options = {
                     min = 10,
                     max = 300,
                     inc = 10,
+                },
+            },
+            {
+                title = "<LOC OPTIONS_0281>Hotkey Labels",
+                key = 'show_hotkeylabels',
+                type = 'toggle',
+                default = true,
+                custom = {
+                    states = {
+                        {text = "<LOC _On>", key = true},
+                        {text = "<LOC _Off>", key = false},
+                    },
                 },
             },
         },

@@ -220,10 +220,12 @@ function WrapText(text, lineWidth, advanceFunction)
                 local lineWidth = lineWidthFunc(curLine)
                 local startIndex = 1
                 local letterIndex = 1
-                for letter in string.gfind(word, ".") do
+                local letter = ""
+                for letterIndex = 1, STR_Utf8Len(word) do
+                    letter = STR_Utf8SubString(word, letterIndex, 1)
                     letterWidth = advanceFunction(letter)
                     if wordWidth + letterWidth > lineWidth then
-                        result[curLine] = string.sub(word, startIndex, letterIndex - 1)
+                        result[curLine] = STR_Utf8SubString(word, startIndex, letterIndex - startIndex)
                         curLine = curLine + 1
                         startIndex = letterIndex
                         pos = 0
@@ -231,10 +233,9 @@ function WrapText(text, lineWidth, advanceFunction)
                         lineWidth = lineWidthFunc(curLine)
                     end
                     wordWidth = wordWidth + letterWidth
-                    letterIndex = letterIndex + 1
                 end
-
-                result[curLine] = string.sub(word, startIndex)
+                local sLen = STR_Utf8Len(word)
+                result[curLine] = STR_Utf8SubString(word, startIndex, sLen - startIndex + 1)
                 pos = wordWidth
                 if wordWidth + spaceWidth < lineWidth then
                     result[curLine] = result[curLine] .. " "

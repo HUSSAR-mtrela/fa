@@ -487,7 +487,7 @@ function RefreshModsList()
         mod.title = GetModNameVersion(mod)
         if mod.ui_only then
             mod.type = 'UI'
-        elseif mod.ui_only == false then
+        else
             mod.type = 'GAME'
         end
 
@@ -528,8 +528,8 @@ function RefreshModsList()
             if mod.ui_only then
                 -- Is this a UI mod that depends on a sim mod that is turned off?
                 if not IsHost and dependencies.requires then
-                    for innerUid, innerMod in dependencies.requires do
-                        if not innerMod.ui_only and not mods.sim.active[innerUid] then
+                    for innerUid in dependencies.requires do
+                        if not mods.selectable[innerUid].ui_only and not mods.sim.active[innerUid] then
                             mod.tags['DISABLED'] = true
                             mods.missingDependencies[uid] = mod
                             break
